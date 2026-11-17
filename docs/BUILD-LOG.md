@@ -158,3 +158,86 @@ intentional", and `verify-manifest.py` mis-implemented repo's revision resolutio
   (`build/gen-release-keys.sh`, output gitignored).
 - `MemAvailable` target of 3–4 GB is **planned**, not measured. Nothing in this
   round measured it on hardware; `XtStatus` exists to make that measurable.
+
+---
+
+## Round 3, continued — the GApps trim was never working
+
+### The finding
+
+**verified** `get_build_var PRODUCT_PACKAGES` on the box contained `Velvet=1`,
+`LatinIMEGooglePrebuilt=1`, `TurboAdapter_NoBatt=1` — every module the allowlist
+claimed to drop was present. The build would have shipped **all 49** Google modules
+instead of the intended 30.
+
+The config looked right:
+
+```make
+XT_GAPPS_DROP := $(filter-out $(XT_GAPPS_KEEP),$(XT_GAPPS_ALL))
+PRODUCT_PACKAGES := $(filter-out $(XT_GAPPS_DROP),$(PRODUCT_PACKAGES))
+```
+
+### Why it cannot work
+
+`$(call inherit-product, X)` **does not include X**. It appends a literal marker
+word `@inherit:<path>` to each product variable. Those markers are expanded much
+later, by `import-nodes` (`build/make/core/node_fns.mk:246`).
+
+So at the moment a product makefile runs, `PRODUCT_PACKAGES` holds only what has
+been added *directly* — never the inherited modules. Instrumenting the file at the
+exact filter point:
+
+```
+XTPROBE drop_count=22           the drop list was correct
+XTPROBE velvet_in_drop=1        Velvet was in it
+XTPROBE pp_word_count=4         PRODUCT_PACKAGES held FOUR words
+XTPROBE inherit_markers=0       not even markers yet
+```
+
+Filtering a 22-name list out of a 4-word variable removes nothing. Silently,
+permanently, with no warning.
+
+AOSP has **no** post-inherit removal hook — checked `product.mk`,
+`product_config.mk`, `node_fns.mk`. Subtraction is not expressible. The only
+workable approach is to never add the modules.
+
+### The trap inside the fix
+
+`WITH_GAPPS` in Infinity X does **not** mean "include GApps". `common.mk:289` uses
+it to inherit three bundles: `gms.mk`, `themepicker.mk`, `sounds.mk`. Setting it
+`false` would have silently removed the theme picker and the Pixel sound set.
+
+The fix therefore sets it false **and** inherits `themepicker.mk` + `sounds.mk`
+explicitly, then adds the allowlist. `gms.mk` also carried ~24 `setupwizard.feature.*`
+properties; those are reproduced verbatim, because dropping them gives a visibly
+reduced first-boot flow.
+
+`version.mk:32` uses `WITH_GAPPS` only to name the zip (GAPPS vs VANILLA) and
+`BoardConfigReservedSize.mk:8` only for partition sizing — neither changes what
+installs, so the product keeps its identity.
+
+### Verified after the fix
+
+**verified** `lunch rc=0`, module count **1209 → 1175**:
+
+| Check | Result |
+|---|---|
+| `Velvet`, `LatinIMEGooglePrebuilt`, `GoogleSettingsOverlay`, `Chrome`, `WellbeingPrebuilt`, `AndroidAutoStubPrebuilt` | **0** each |
+| `Phonesky`, `PrebuiltGmsCoreVic_*`, `WebViewGoogle-Stub`, `TrichromeLibrary-Stub`, `SetupWizardPrebuilt_versioned`, `GoogleServicesFramework`, `talkback`, `GoogleTTS`, `GoogleContacts` | **1** each |
+| `FrameworkOverlayThemePicker`, `FrameworkPixelSounds` | **1** each — not lost |
+| `XtThemes`, `XtWidgets`, `XtStatus` | **1** each |
+
+### The lesson that generalises
+
+`build/verify-gapps.py` compares two static lists and reported **OK the whole
+time**. A static checker cannot see make-time variable state. Only an artifact
+check — the staged product tree, or `get_build_var` — catches this class of bug.
+
+Same shape as the inert overlays and the stale `vendor/xt`: **the build is green,
+the files look correct, and the effect is absent.** Three instances of one pattern
+in this project is enough to treat "did the artifact actually change?" as a required
+check on every mechanism, not an optional one.
+
+New guard: `xt-gapps.mk` now `$(error)`s at parse time if `WITH_GAPPS` is true
+alongside the allowlist, because that combination would re-add all 49 on top of the
+30. Static review cannot catch that; a hard build failure can.
