@@ -169,3 +169,51 @@ ROM defect.
 
 **Method note:** this is the failure mode to watch for with `filter-out`. It
 never errors. Verify every dropped name against the source that defines it.
+
+## K1 — `lineage-24.0-KSUN` has KernelSU but no SUSFS
+
+**Symptom.** The ROM is specified to ship "KSUN + SUSFS natively", but a build from
+`lineage-24.0-KSUN` (468ab83) produces a kernel with KernelSU and no SUSFS:
+no `fs/susfs.c`, no `include/linux/susfs.h`, no `CONFIG_KSU_SUSFS`.
+
+**Cause.** That branch integrates KernelSU-Next and stops there. SUSFS is a
+separate patch series.
+
+**Fix.** Use `ksun-susfs` (73420a8). It carries `fs/susfs.c` (58229 B),
+`include/linux/susfs.{h,def.h}`, and a defconfig that already sets
+`CONFIG_KSU=y`, `CONFIG_KSU_MANUAL_HOOK=y`, `CONFIG_KSU_SUSFS=y`, and the
+`SUS_PATH`/`SUS_MOUNT`/`SUS_KSTAT`/`TRY_UMOUNT` sub-options.
+
+**Cost.** The branches have diverged: `ksun-susfs` is 142 ahead and 7 behind. The 7
+missing commits are build tooling only (AnyKernel3, `build_kernel`, DTB/DTBO
+support, the KernelSU-Next submodule integration). None affect an AOSP build, which
+uses `TARGET_KERNEL_CONFIG` rather than the repo's script.
+
+## K2 — the KernelSU-Next submodule arrives empty
+
+**Symptom.** On `lineage-24.0-KSUN`, `drivers/kernelsu` is a symlink to
+`../KernelSU-Next/kernel`, and `KernelSU-Next/` is empty after `repo sync`. Because
+`drivers/Kconfig` still contains `source "drivers/kernelsu/Kconfig"`, the kernel
+cannot be configured at all — Kconfig points at a file that does not exist.
+
+**Cause.** `repo sync` does not recurse into git submodules by default, and the
+submodule is declared in `.gitmodules` rather than the manifest.
+
+**Fix.** Either initialise it by hand inside the kernel tree, or use `ksun-susfs`,
+which integrates KernelSU as a real directory and has no submodule dependency at
+all. The ROM uses `ksun-susfs` for exactly this reason.
+
+**Note.** This is the kind of defect that reads as "the kernel is broken" but is
+really "a file is not there because nobody ran a second command".
+
+## M1 — a double hyphen in a manifest comment breaks `repo` entirely
+
+**Symptom.** `repo init`/`repo sync` fails to parse the local manifest. No useful
+error — just a parse failure.
+
+**Cause.** XML forbids `--` inside a comment. Writing the natural shell command
+`git submodule update --init` in a comment about K2 is enough to break the file, and
+it is invisible in editors that do not validate XML.
+
+**Fix.** Rephrase. `build/verify-manifest.py` now detects it by name, because the
+generic parser message ("invalid token") gives no hint about the real cause.

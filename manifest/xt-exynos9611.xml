@@ -15,7 +15,7 @@
 
     Branch policy (verified 2026-11-17 via GitHub API):
         device/vendor trees  Parbindar7/*  branch lineage-24.0   (Android 17)
-        kernel               XtrComSu/*    branch lineage-24.0-KSUN
+        kernel               XtrComSu/*    branch ksun-susfs  (KSUN + SUSFS)
         hardware/epolicy     LineageOS/*   branch lineage-24.0
 -->
 <manifest>
@@ -60,10 +60,38 @@
   <project path="vendor/samsung/a51" name="android_vendor_samsung_a51" remote="parbindar" />
 
   <!-- ==================== OUR kernel (KSUN + SUSFS) ==================== -->
+  <!-- ==================== kernel (ours, not upstream's) ====================
+       revision="ksun-susfs", NOT lineage-24.0-KSUN.
+
+       lineage-24.0-KSUN has KernelSU-Next but NO SUSFS at all: no fs/susfs.c, no
+       include/linux/susfs.h, no CONFIG_KSU_SUSFS. Since the ROM's stated goal is
+       KSUN + SUSFS native, that branch cannot satisfy it.
+
+       ksun-susfs (73420a8) carries the real thing — fs/susfs.c is 58229 bytes, and
+       exynos9611-m31_defconfig already contains:
+           CONFIG_KSU=y
+           CONFIG_KSU_MANUAL_HOOK=y
+           CONFIG_KSU_SUSFS=y
+           CONFIG_KSU_SUSFS_SUS_PATH / SUS_MOUNT / SUS_KSTAT / TRY_UMOUNT = y
+
+       The two branches have diverged (ksun-susfs is 142 ahead, 7 behind). The 7
+       commits it lacks are all build tooling — AnyKernel3, build_kernel script,
+       DTB/DTBO build support, and the KernelSU-Next submodule integration — none of
+       which this ROM uses, because AOSP builds the kernel from
+       TARGET_KERNEL_CONFIG rather than the repo's own script.
+
+       That last point matters practically: ksun-susfs integrates KernelSU as a real
+       directory, whereas lineage-24.0-KSUN reaches it through a git SUBMODULE
+       (drivers/kernelsu -> ../KernelSU-Next/kernel) that `repo sync` does NOT
+       populate. On that branch the tree arrives with drivers/kernelsu/Kconfig
+       missing while drivers/Kconfig still sources it, so the kernel cannot even be
+       configured until someone remembers to initialise the submodule by hand.
+       ksun-susfs has no such trap.
+  -->
   <project path="kernel/samsung/universal9611"
            name="android_kernel_samsung_universal9611"
            remote="xtk"
-           revision="lineage-24.0-KSUN" />
+           revision="ksun-susfs" />
 
   <!-- ==================== hardware / HALs / sepolicy ==================== -->
   <project path="device/samsung_slsi/sepolicy"           name="android_device_samsung_slsi_sepolicy"            remote="los" />
