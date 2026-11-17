@@ -9,7 +9,7 @@
 # Deltas (see docs/DELTAS.md):
 #   D1  vendor/lineage -> vendor/infinity        (Infinity X has no vendor/lineage)
 #   D2  register xt_<device>.mk in AndroidProducts.mk
-#   D3  kernel clang pin                         (4.14 cannot build with A17 clang)
+#   D3  kernel clang pin + explicit clang PATH   (4.14 cannot use A17's default clang)
 #   D4  copy our product + config into the tree
 #
 set -euo pipefail
@@ -31,8 +31,6 @@ DEVICES=(m31 m31s f41 m21 a51)
 # ---------------------------------------------------------------------------
 say "D1: vendor/lineage -> vendor/infinity"
 # ---------------------------------------------------------------------------
-# Only touch files that actually reference vendor/lineage. Upstream M31-family
-# trees reference it in exactly two places; siblings follow the same pattern.
 mapfile -t hits < <(grep -rl 'vendor/lineage' \
     device/samsung vendor/samsung 2>/dev/null || true)
 
@@ -40,13 +38,12 @@ if [[ ${#hits[@]} -eq 0 ]]; then
     ok "nothing to patch"
 else
     for f in "${hits[@]}"; do
-        # Guard: refuse to rewrite anything that is not a makefile-ish file.
         case "$f" in
             *.mk|*.bp|*.sh) ;;
             *) warn "skipping non-makefile $f"; continue ;;
         esac
-        # Guard: the replacement target must exist, or we would swap one broken
-        # include for another. Both targets verified present in Infinity X @ 17.
+        # Guard: the replacement target must exist, or we swap one broken include
+        # for another. Both verified present in Infinity X @ branch 17.
         if [[ ! -f vendor/infinity/config/common_full_phone.mk ]] \
         && [[ ! -f vendor/infinity/config/BoardConfigReservedSize.mk ]]; then
             warn "vendor/infinity not synced yet — run repo sync first"
@@ -56,7 +53,6 @@ else
     done
 fi
 
-# Post-condition: no references left.
 if grep -rq 'vendor/lineage' device/samsung vendor/samsung 2>/dev/null; then
     die "vendor/lineage still referenced after D1"
 fi
@@ -65,10 +61,6 @@ ok "verified: zero vendor/lineage references remain"
 # ---------------------------------------------------------------------------
 say "D2: register xt_<device>.mk in AndroidProducts.mk"
 # ---------------------------------------------------------------------------
-# Upstream AndroidProducts.mk lists only lineage_<device>.mk. Our product files
-# live in vendor/xt/products, so we do not copy them into the device tree —
-# instead we add a pointer to them. This keeps the delta to one appended block
-# per device and survives upstream rebases cleanly.
 for d in "${DEVICES[@]}"; do
     apm="device/samsung/$d/AndroidProducts.mk"
     [[ -f "$apm" ]] || { warn "$apm absent (device not synced) — skip"; continue; }
@@ -94,24 +86,56 @@ done
 # ---------------------------------------------------------------------------
 say "D3: kernel clang pin (4.14 vs A17 toolchain)"
 # ---------------------------------------------------------------------------
-# BoardConfigCommon.mk sets TARGET_KERNEL_NO_GCC := true, so the kernel builds
-# with platform clang. Infinity X defaults KERNEL_CLANG_VERSION to
-# $(LLVM_AOSP_PREBUILTS_VERSION), which on Android 17 is far too new for a
-# Linux 4.14 kernel. Pin an era-appropriate prebuilt that is ALREADY in the
-# manifest (prebuilts/clang/kernel/linux-x86/clang-r416183b) so this costs no
-# extra download.
+# Two facts, both verified by reading the synced tree on 2026-11-17:
+#
+#   1. vendor/infinity/config/BoardConfigKernel.mk sets
+#          KERNEL_MAKE_FLAGS += LLVM=1 LLVM_IAS=1
+#      unconditionally. That is FINE for this kernel: the universal9611
+#      Makefile (4.14.357) has LLVM support backported and honours
+#      `LLVM_IAS ?= 1` with a `-no-integrated-as` branch at Makefile:559.
+#      So no override is needed — an earlier draft of this script wrongly
+#      planned to disable IAS.
+#
+#   2. BoardConfigKernel.mk resolves the clang directory as
+#          TARGET_KERNEL_CLANG_PATH ?= $(BUILD_TOP)/prebuilts/clang/host/$(HOST_PREBUILT_TAG)/$(KERNEL_CLANG_VERSION)
+#      but the 4.14-era prebuilt in the Infinity X manifest lives under
+#      prebuilts/clang/KERNEL/linux-x86/clang-r416183b. Setting only the
+#      version therefore points at a directory that does not exist, and the
+#      kernel build fails with a missing-compiler error. Both variables must
+#      be set.
+#
 bcc="device/samsung/universal9611-common/BoardConfigCommon.mk"
 if [[ -f "$bcc" ]]; then
-    marker="# XT-OS: 4.14 kernel needs an era-appropriate clang"
+    marker="# XT-OS: pin an era-appropriate clang for the 4.14 kernel"
     if grep -qF "$marker" "$bcc"; then
         ok "clang pin already present"
     else
-        cat >> "$bcc" <<EOF
+        cat >> "$bcc" <<'EOF'
 
-$marker
+# XT-OS: pin an era-appropriate clang for the 4.14 kernel
+#
+# The kernel is Linux 4.14.357. Infinity X's default is
+# $(LLVM_AOSP_PREBUILTS_VERSION), which on Android 17 is far too new.
+# clang-r416183b is a clang-12-era toolchain that 4.14 kernels build with,
+# and it is ALREADY in the Infinity X manifest (snippets/lineage.xml), so
+# this costs no extra download.
 TARGET_KERNEL_CLANG_VERSION := r416183b
+
+# The PATH must be set explicitly. BoardConfigKernel.mk defaults it to
+# prebuilts/clang/host/<tag>/clang-<version>, but this prebuilt is shipped
+# in prebuilts/clang/kernel/linux-x86/. Setting only the version above
+# yields a nonexistent compiler directory.
+TARGET_KERNEL_CLANG_PATH := $(BUILD_TOP)/prebuilts/clang/kernel/linux-x86/clang-r416183b
 EOF
-        ok "pinned TARGET_KERNEL_CLANG_VERSION := r416183b"
+        ok "pinned clang r416183b + explicit TARGET_KERNEL_CLANG_PATH"
+    fi
+
+    # Verify the pinned compiler actually exists in this tree.
+    cb="prebuilts/clang/kernel/linux-x86/clang-r416183b/bin/clang"
+    if [[ -x "$cb" ]]; then
+        ok "compiler present: $cb"
+    else
+        warn "compiler NOT found at $cb — sync may be incomplete"
     fi
 else
     warn "$bcc absent — skip clang pin"

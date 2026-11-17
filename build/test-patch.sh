@@ -46,15 +46,19 @@ check "no vendor/lineage left" "0" \
       "$(grep -r 'vendor/lineage' "$T/device" 2>/dev/null | wc -l | tr -d ' ')"
 check "D2 registered our product" "1" \
       "$(grep -c 'vendor/xt/products/xt_m31.mk' "$T/device/samsung/m31/AndroidProducts.mk" || true)"
-check "D3 pinned clang" "1" \
+check "D3 pinned clang version" "1" \
       "$(grep -c 'TARGET_KERNEL_CLANG_VERSION := r416183b' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
+check "D3 set explicit clang path" "1" \
+      "$(grep -c 'TARGET_KERNEL_CLANG_PATH := .*prebuilts/clang/kernel' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
 
 # ---- 2. idempotency -------------------------------------------------------
 run >/dev/null
 check "D2 not duplicated" "1" \
       "$(grep -c 'XT-OS overlay products' "$T/device/samsung/m31/AndroidProducts.mk" || true)"
 check "D3 not duplicated" "1" \
-      "$(grep -c 'TARGET_KERNEL_CLANG_VERSION' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
+      "$(grep -c 'TARGET_KERNEL_CLANG_VERSION :=' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
+check "D3 clang path not duplicated" "1" \
+      "$(grep -c 'TARGET_KERNEL_CLANG_PATH :=' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
 
 # ---- 3. residual reference must be fatal ----------------------------------
 printf 'prefix=vendor/lineage/config\n' > "$T/device/samsung/m31/some.conf"
