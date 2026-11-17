@@ -50,6 +50,8 @@ check "D3 pinned clang version" "1" \
       "$(grep -c 'TARGET_KERNEL_CLANG_VERSION := r416183b' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
 check "D3 set explicit clang path" "1" \
       "$(grep -c 'TARGET_KERNEL_CLANG_PATH := .*prebuilts/clang/kernel' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
+check "D3 defines BUILD_TOP" "1" \
+      "$(grep -c '^BUILD_TOP := \$(abspath \.)$' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
 
 # ---- 2. idempotency -------------------------------------------------------
 run >/dev/null
@@ -59,6 +61,31 @@ check "D3 not duplicated" "1" \
       "$(grep -c 'TARGET_KERNEL_CLANG_VERSION :=' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
 check "D3 clang path not duplicated" "1" \
       "$(grep -c 'TARGET_KERNEL_CLANG_PATH :=' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
+check "D3 BUILD_TOP not duplicated" "1" \
+      "$(grep -c '^BUILD_TOP :=' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
+
+# ---- 2b. migrate a tree patched by the OLD script (clang pin only) --------
+# The first version of D3 appended only TARGET_KERNEL_CLANG_VERSION/PATH, which
+# left BUILD_TOP unset and the kernel unbuildable. Such a tree must be upgraded
+# in place, not left broken and not duplicated.
+OLD_FIXTURE="$T/device/samsung/universal9611-common/BoardConfigCommon.mk"
+python3 - "$OLD_FIXTURE" <<'PYEOF'
+import sys
+p = sys.argv[1]
+t = open(p).read()
+i = t.find("# XT-OS: BUILD_TOP is undefined on Infinity X")
+if i != -1:
+    open(p, "w").write(t[:i].rstrip("\n") + "\n")
+open(p, "a").write(
+    "\n# XT-OS: pin an era-appropriate clang for the 4.14 kernel\n"
+    "TARGET_KERNEL_CLANG_VERSION := r416183b\n"
+    "TARGET_KERNEL_CLANG_PATH := $(BUILD_TOP)/prebuilts/clang/kernel/linux-x86/clang-r416183b\n")
+PYEOF
+run >/dev/null
+check "migration: BUILD_TOP added" "1" \
+      "$(grep -c '^BUILD_TOP := \$(abspath \.)$' "$OLD_FIXTURE" || true)"
+check "migration: old block replaced once" "1" \
+      "$(grep -c 'TARGET_KERNEL_CLANG_VERSION :=' "$OLD_FIXTURE" || true)"
 
 # ---- 3. residual reference must be fatal ----------------------------------
 printf 'prefix=vendor/lineage/config\n' > "$T/device/samsung/m31/some.conf"
