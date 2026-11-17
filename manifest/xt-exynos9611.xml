@@ -22,7 +22,14 @@
 
   <!-- ==================== remotes ==================== -->
   <remote name="parbindar" fetch="https://github.com/Parbindar7" revision="lineage-24.0" />
-  <remote name="xtk"       fetch="https://github.com/XtrComSu"   revision="lineage-24.0-KSUN" />
+  <!--
+       NOTE: the xtk remote deliberately declares NO default revision.
+       Its two projects need different branches (kernel = lineage-24.0-KSUN,
+       overlay = main). A default here would silently send any future
+       project without an explicit revision to the kernel branch, which is a
+       confusing failure. Omitting it makes that omission obvious.
+  -->
+  <remote name="xtk"       fetch="https://github.com/XtrComSu" />
   <remote name="los"       fetch="https://github.com/LineageOS"  revision="lineage-24.0" />
 
   <!-- ==================== shared: Exynos 9611 common fabric ==================== -->
