@@ -1,9 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    android:category is the attribute that makes this overlay discoverable and
+    selectable by the system ThemePicker and by our own switcher. Without it an
+    overlay can still be enabled by hand, but it does not appear in the theme list
+    and loses to categorised overlays when the framework arbitrates — which is why
+    a theme that "looked enabled" could still render as stock.
+
+    android.theme.customization.system_palette is the category the ROM's own
+    AndroidBlackTheme uses for exactly this job (verified in
+    packages/overlays/Themes/themes/AndroidBlackTheme/AndroidManifest.xml), so it
+    is the category the platform actually resolves for framework colour overrides.
+
+    isStatic is false: these are user-switchable, not baked in at boot.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="os.theme.nothing">
+    package="os.theme.nothing"
+    android:versionCode="1"
+    android:versionName="1.0">
+
     <overlay
         android:targetPackage="android"
-        android:isStatic="false"
-        android:priority="1" />
-    <application android:hasCode="false" />
+        android:category="android.theme.customization.system_palette"
+        android:priority="1"
+        android:isStatic="false" />
+
+    <application android:hasCode="false" android:label="@string/theme_name" />
 </manifest>

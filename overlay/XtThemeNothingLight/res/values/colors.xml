@@ -1,11 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Light variant: inverted surfaces, same accent. -->
+<!--
+    Nothing Light — white surfaces, black glyphs, one red accent.
+
+    Only public framework resources are overridden here (system_neutral1_*,
+    system_accent1_*); the non-public device_default entries are set as well
+    because AndroidBlackTheme demonstrates the framework resolves them, but the
+    theme does not depend on that.
+-->
 <resources>
-    <color name="nothing_black">#FFFFFFFF</color>
-    <color name="nothing_surface">#FFF5F5F5</color>
-    <color name="nothing_line">#FFE0E0E0</color>
-    <color name="nothing_white">#FF000000</color>
-    <color name="nothing_grey">#FF5C5C5C</color>
-    <color name="nothing_dim">#FF9A9A9A</color>
-    <color name="nothing_red">#FFD71921</color>
+    <color name="system_neutral1_50">#FFFFFF</color>
+    <color name="system_neutral1_100">#F7F7F7</color>
+    <color name="system_neutral1_900">#000000</color>
+    <color name="system_neutral2_50">#FFFFFF</color>
+    <color name="system_accent1_100">#D71921</color>
+    <color name="system_accent1_500">#D71921</color>
+    <color name="system_accent1_600">#D71921</color>
+    <color name="background_device_default_light">#FFFFFF</color>
+    <color name="primary_device_default_light">#FFFFFF</color>
 </resources>

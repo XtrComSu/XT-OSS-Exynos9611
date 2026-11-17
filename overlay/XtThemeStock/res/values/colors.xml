@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Stock AOSP — the untouched baseline.
+
+    Empty by design, exactly like XtThemeMonet. Its value is that it exists as a
+    named target: selecting it disables the other three (the switcher uses
+    setEnabledExclusiveInCategory), and the system falls back to its own defaults.
+    Deleting this overlay would remove the user's ability to get back to stock.
+-->
+<resources>
+</resources>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Monet / dynamic — hands colour back to the wallpaper.
+
+    Intentionally almost empty. Android's Monet engine generates system_accent* and
+    system_neutral* at runtime from the wallpaper, and it does that by *applying an
+    overlay of its own*. Declaring those resources here would fight it — whichever
+    overlay wins is decided by priority, so a fixed value here would either be
+    ignored or would silently break dynamic colour. The only thing this theme does
+    is leave the generated palette alone.
+
+    A theme with no overrides is not dead weight: it is the "restore defaults"
+    option in the switcher, and it is the escape hatch if a fixed palette ever
+    renders unreadable against a particular app.
+-->
+<resources>
+    <!-- Nothing else on purpose. See the comment above. -->
+</resources>

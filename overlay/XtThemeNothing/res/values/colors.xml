@@ -1,17 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Nothing-style palette. True black (#000000) is the default background: on the
-    M31's Super AMOLED panel those pixels are physically off, which is both the
-    intended aesthetic and a measurable display-power saving.
+    Light-mode counterpart. Same accent, inverted neutrality.
 
-    Accent red #D71921 is the single accent for the entire system.
+    Kept deliberately restrained: Nothing's light theme is white with black text,
+    not a tinted surface. Only the accent is carried over, so a user in light mode
+    still gets the same red identity.
 -->
 <resources>
-    <color name="nothing_black">#FF000000</color>
-    <color name="nothing_surface">#FF0A0A0A</color>
-    <color name="nothing_line">#FF1F1F1F</color>
-    <color name="nothing_white">#FFFFFFFF</color>
-    <color name="nothing_grey">#FF9A9A9A</color>
-    <color name="nothing_dim">#FF5C5C5C</color>
-    <color name="nothing_red">#FFD71921</color>
+    <color name="system_neutral1_900">#FFFFFF</color>
+    <color name="system_accent1_100">#D71921</color>
+    <color name="system_accent1_200">#D71921</color>
+    <color name="system_accent1_300">#D71921</color>
+    <color name="system_accent1_400">#D71921</color>
+    <color name="system_accent1_500">#D71921</color>
+    <color name="system_accent1_600">#D71921</color>
+    <color name="system_accent1_700">#D71921</color>
+    <color name="system_accent1_800">#D71921</color>
+    <color name="background_device_default_light">#FFFFFF</color>
+    <color name="primary_device_default_light">#FFFFFF</color>
 </resources>

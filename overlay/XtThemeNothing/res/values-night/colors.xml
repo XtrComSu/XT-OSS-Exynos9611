@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Nothing Dark — the shipping palette.
+
+    THIS FILE OVERRIDES FRAMEWORK RESOURCES, so every name here must already exist
+    in android's public.xml. Invented names build fine and do absolutely nothing,
+    because an RRO is a resource *substitution* — it cannot add resources to the
+    target package. The previous version of this overlay defined nothing_black,
+    nothing_red and friends, none of which exist in the framework, so it shipped as
+    a no-op. Every name below was verified present and public in
+    frameworks/base/core/res/res/values/public-final.xml.
+
+    True black is the point, not just the look: on the M31's Super AMOLED panel
+    those pixels are physically off, so the background costs no display power.
+    For a phone whose whole design goal is low idle drain, black is the cheapest
+    colour available.
+-->
+<resources>
+    <!-- Neutral ramp collapsed to black. These 13 stops drive every Material
+         surface, so overriding only the ones we need (rather than all 13) leaves
+         the rest of the ramp intact and keeps contrast sane. -->
+    <color name="system_neutral1_900">#000000</color>
+    <color name="system_neutral1_1000">#000000</color>
+    <color name="system_neutral2_900">#0A0A0A</color>
+    <color name="system_neutral2_1000">#000000</color>
+
+    <!-- Accent: Nothing red #D71921 as the single hue, so every accent stop is
+         the same colour. A tonal ramp is what Material expects; giving it one
+         flat value is deliberate — Nothing uses one red, not seven. -->
+    <color name="system_accent1_100">#D71921</color>
+    <color name="system_accent1_200">#D71921</color>
+    <color name="system_accent1_300">#D71921</color>
+    <color name="system_accent1_400">#D71921</color>
+    <color name="system_accent1_500">#D71921</color>
+    <color name="system_accent1_600">#D71921</color>
+    <color name="system_accent1_700">#D71921</color>
+    <color name="system_accent1_800">#D71921</color>
+    <color name="system_accent1_1000">#000000</color>
+
+    <!-- Accents 2 and 3 are the "secondary/tertiary" hues Material derives.
+         Keeping them black means the UI stays monochrome + one red instead of
+         growing the usual pastel complement. -->
+    <color name="system_accent2_100">#000000</color>
+    <color name="system_accent2_500">#000000</color>
+    <color name="system_accent2_1000">#000000</color>
+    <color name="system_accent3_100">#000000</color>
+    <color name="system_accent3_500">#000000</color>
+    <color name="system_accent3_1000">#000000</color>
+
+    <!-- DeviceDefault surfaces. NOT public, so these only take effect because
+         AndroidBlackTheme proves the framework resolves them from an overlay in
+         the system_palette category; if a future release stops honouring them the
+         palette above still applies and nothing breaks. -->
+    <color name="background_device_default_dark">#000000</color>
+    <color name="primary_device_default_dark">#000000</color>
+    <color name="primary_dark_device_default_dark">#000000</color>
+    <color name="primary_device_default_settings">#000000</color>
+    <color name="primary_dark_device_default_settings">#000000</color>
+    <color name="system_surface_bright_dark">#171717</color>
+    <color name="system_surface_container_dark">#000000</color>
+    <color name="system_surface_container_high_dark">#171717</color>
+</resources>
