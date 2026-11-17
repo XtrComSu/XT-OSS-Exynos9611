@@ -218,6 +218,104 @@ for d in "${DEVICES[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
+say "D5: make INFINITY_BUILD resolve for xt_* products"
+# ---------------------------------------------------------------------------
+# THE ROOT CAUSE of the kernel build failing, found only by running a real build.
+#
+# build/envsetup.sh, in the lunch() function, derives INFINITY_BUILD from the
+# product name — but only if the name starts with "infinity_":
+#
+#     if (echo -n $1 | grep -q -e "^infinity_") ; then
+#       INFINITY_BUILD=$(echo -n $product | sed -e 's/^infinity_//g')
+#     else
+#       INFINITY_BUILD=
+#     fi
+#
+# Our products are xt_m31, xt_m31s, … so INFINITY_BUILD becomes empty. And
+# build/make/core/config.mk:501 gates the entire Infinity config chain on it:
+#
+#     ifneq ($(INFINITY_BUILD),)
+#     include vendor/infinity/config/BoardConfigLineage.mk
+#     endif
+#
+# Empty INFINITY_BUILD therefore means BoardConfigLineage.mk never runs —
+# and with it BoardConfigKernel.mk, which is what defines KERNEL_MAKE_CMD,
+# KERNEL_BUILD_OUT_PREFIX, TARGET_KERNEL_CLANG_PATH and the whole
+# TARGET_KERNEL_* surface. That is why:
+#
+#     $ get_build_var KERNEL_MAKE_CMD            -> (empty)
+#     $ get_build_var KERNEL_BUILD_OUT_PREFIX    -> (empty)
+#     $ get_build_var TARGET_KERNEL_CLANG_PATH   -> /prebuilts/... (BUILD_TOP empty)
+#
+# and why Soong then failed with
+#     module "generated_kernel_includes": unknown variable '$(KERNEL_BUILD_OUT_PREFIX)'
+#
+# Fix: teach lunch() that xt_* is also one of our products, stripping the xt_
+# prefix so INFINITY_BUILD holds the bare device name (m31), exactly as it does
+# for infinity_m31. This is a two-line addition to the condition, done with a
+# precise substitution so an upstream change makes this delta fail loudly
+# rather than silently corrupting the function.
+#
+es="build/envsetup.sh"
+if [[ -f "$es" ]]; then
+    if grep -qF 'XT-OS: INFINITY_BUILD for xt_* products' "$es"; then
+        ok "INFINITY_BUILD already accepts xt_*"
+    else
+        python3 - "$es" <<'PY'
+import sys
+
+path = sys.argv[1]
+src = open(path).read()
+
+anchor = (
+    '    if (echo -n $1 | grep -q -e "^infinity_") ; then\n'
+    '      INFINITY_BUILD=$(echo -n $product | sed -e \'s/^infinity_//g\')\n'
+    '    else\n'
+    '      INFINITY_BUILD=\n'
+    '    fi\n'
+)
+
+replacement = (
+    '    # XT-OS: INFINITY_BUILD for xt_* products\n'
+    '    #\n'
+    '    # Upstream only sets INFINITY_BUILD when the product name starts with\n'
+    '    # "infinity_", and build/make/core/config.mk gates the entire\n'
+    '    # vendor/infinity config chain on it being non-empty. Our products are\n'
+    '    # xt_*, so without this the kernel configuration (BoardConfigKernel.mk:\n'
+    '    # KERNEL_MAKE_CMD, KERNEL_BUILD_OUT_PREFIX, TARGET_KERNEL_*) is never\n'
+    '    # loaded and the Soong kernel-header modules fail. Strip xt_ so the\n'
+    '    # value is the bare device name, matching infinity_<device> behaviour.\n'
+    '    if (echo -n $1 | grep -q -e "^infinity_") ; then\n'
+    '      INFINITY_BUILD=$(echo -n $product | sed -e \'s/^infinity_//g\')\n'
+    '    elif (echo -n $1 | grep -q -e "^xt_") ; then\n'
+    '      INFINITY_BUILD=$(echo -n $product | sed -e \'s/^xt_//g\')\n'
+    '    else\n'
+    '      INFINITY_BUILD=\n'
+    '    fi\n'
+)
+
+if anchor not in src:
+    sys.exit(
+        "D5: anchor not found in build/envsetup.sh — upstream changed the "
+        "lunch() product-name logic. Inspect it manually:\n"
+        "  grep -n 'infinity_' build/envsetup.sh"
+    )
+
+open(path, "w").write(src.replace(anchor, replacement, 1))
+PY
+        ok "lunch() now sets INFINITY_BUILD for xt_* products"
+    fi
+
+    if grep -q 'xt_' "$es" && grep -q 'INFINITY_BUILD' "$es"; then
+        ok "verified: INFINITY_BUILD has an xt_ branch"
+    else
+        die "D5 verification failed in $es"
+    fi
+else
+    warn "$es absent — cannot patch INFINITY_BUILD"
+fi
+
+# ---------------------------------------------------------------------------
 say "Summary"
 # ---------------------------------------------------------------------------
 printf '    patches applied to %s\n' "$TREE"

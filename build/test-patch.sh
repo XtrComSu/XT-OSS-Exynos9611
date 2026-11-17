@@ -34,6 +34,28 @@ printf 'PRODUCT_MAKEFILES := \\\n    $(LOCAL_DIR)/lineage_m31.mk\n' \
 printf 'TARGET_KERNEL_NO_GCC := true\ninclude vendor/lineage/config/BoardConfigReservedSize.mk\n' \
     > "$T/device/samsung/universal9611-common/BoardConfigCommon.mk"
 
+mkdir -p "$T/build"
+cat > "$T/build/envsetup.sh" <<'EOS'
+# Mirrors upstream lunch() closely enough for D5: the legacy form
+# <product>-<variant> must be split BEFORE the product name is tested, which is
+# what the real function does with  IFS="-" read -r product variant <<< "$1"
+lunch() {
+    local product variant
+    local legacy=$(echo $1 | grep "-")
+    if [[ $# -eq 1 && -n $legacy ]]; then
+        IFS="-" read -r product variant <<< "$1"
+    else
+        product=$1
+    fi
+    if (echo -n $1 | grep -q -e "^infinity_") ; then
+      INFINITY_BUILD=$(echo -n $product | sed -e 's/^infinity_//g')
+    else
+      INFINITY_BUILD=
+    fi
+    export INFINITY_BUILD
+}
+EOS
+
 run() { bash "$OVERLAY/build/patch-trees.sh" "$T" 2>&1 | sed 's/\x1b\[[0-9;]*m//g'; }
 
 # ---- 1. clean apply --------------------------------------------------------
@@ -63,6 +85,8 @@ check "D3 clang path not duplicated" "1" \
       "$(grep -c 'TARGET_KERNEL_CLANG_PATH :=' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
 check "D3 BUILD_TOP not duplicated" "1" \
       "$(grep -c '^BUILD_TOP :=' "$T/device/samsung/universal9611-common/BoardConfigCommon.mk" || true)"
+check "D5 not duplicated" "1" \
+      "$(grep -c 'XT-OS: INFINITY_BUILD for xt_' "$T/build/envsetup.sh" || true)"
 
 # ---- 2b. migrate a tree patched by the OLD script (clang pin only) --------
 # The first version of D3 appended only TARGET_KERNEL_CLANG_VERSION/PATH, which
@@ -86,6 +110,16 @@ check "migration: BUILD_TOP added" "1" \
       "$(grep -c '^BUILD_TOP := \$(abspath \.)$' "$OLD_FIXTURE" || true)"
 check "migration: old block replaced once" "1" \
       "$(grep -c 'TARGET_KERNEL_CLANG_VERSION :=' "$OLD_FIXTURE" || true)"
+check "D5 added xt_ branch" "1" \
+      "$(grep -c 'grep -q -e "\^xt_"' "$T/build/envsetup.sh" || true)"
+check "D5 strips xt_ prefix" "1" \
+      "$(grep -c "s/\^xt_//g" "$T/build/envsetup.sh" || true)"
+
+# D5 must actually make INFINITY_BUILD non-empty for xt_m31
+got=$( cd "$T" && bash -c '. build/envsetup.sh; lunch xt_m31-userdebug >/dev/null; echo "$INFINITY_BUILD"' )
+check "D5 INFINITY_BUILD resolves for xt_m31" "m31" "$got"
+got2=$( cd "$T" && bash -c '. build/envsetup.sh; lunch infinity_m31-userdebug >/dev/null; echo "$INFINITY_BUILD"' )
+check "D5 upstream infinity_ still works" "m31" "$got2"
 
 # ---- 3. residual reference must be fatal ----------------------------------
 printf 'prefix=vendor/lineage/config\n' > "$T/device/samsung/m31/some.conf"
