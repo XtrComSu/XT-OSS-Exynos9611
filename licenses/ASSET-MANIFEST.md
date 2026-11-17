@@ -5,8 +5,8 @@ included in any release artifact.
 
 | Asset | Upstream | Licence | Bundled | Notes |
 |---|---|---|---|---|
-| Doto (variable) | Google Fonts | OFL 1.1 | planned | closest legitimate dot-matrix match to Ndot |
-| Inter (variable) | rsms/inter | OFL 1.1 | planned | body text |
+| Doto (variable) | google/fonts `ofl/doto/Doto[ROND,wght].ttf` | OFL 1.1 — `licenses/fonts/OFL-Doto.txt` | **yes** | sha256 `6f4fe7d37853b91df3698daa84cde2dbe1c9695d88c986e6510134910337d426` |
+| Inter (variable) | google/fonts `ofl/inter/Inter[opsz,wght].ttf` | OFL 1.1 — `licenses/fonts/OFL-Inter.txt` | **yes** | sha256 `29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031` |
 | JetBrains Mono | JetBrains | OFL 1.1 | planned | technical readouts, optional |
 | Lawnicons | LawnchairLauncher | Apache-2.0 | planned | monochrome icon pack |
 | Boot animation | ours | own work | planned | 1080x2400, dot-matrix |
@@ -14,8 +14,9 @@ included in any release artifact.
 | UI sounds | ours (synthesised) | own work | planned | |
 | Wallpapers | ours / CC0 | own / CC0 | planned | provenance recorded per file |
 | Dot glyphs | ours | own work | planned | drawn on a 6x10 dot grid |
-| Widget app | ours | Apache-2.0 | planned | |
-| Theme RROs | ours | Apache-2.0 | yes | this repo |
+| Widget app (XtWidgets) | ours | Apache-2.0 | **yes** | dot glyphs drawn in Canvas, no font file |
+| Theme RROs | ours | Apache-2.0 | **yes** | this repo |
+| Apps (XtThemes/XtStatus) | ours | Apache-2.0 | **yes** | |
 
 ## Deliberately NOT bundled
 

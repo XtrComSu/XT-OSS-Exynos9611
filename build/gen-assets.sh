@@ -53,16 +53,34 @@ for mod in "${!APPS[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Fonts — copied to /product/fonts, registered via fonts_customization.xml.
+# Fonts — copied to /product/fonts.
+#
+# Copying the .ttf files alone accomplishes nothing: the platform only sees a
+# font if it is declared in a fonts_customization.xml that lives in the same
+# directory AND is itself copied to /product/etc/fonts_customization.xml.
+# Shipping the files without the registration is a silent no-op — the fonts sit
+# on the device, take up space, and are never selectable. Both must be copied
+# together, or neither.
 # ---------------------------------------------------------------------------
 copy_lines=()
+font_files=()
 for f in fonts/Doto-VariableFont.ttf fonts/Inter-VariableFont.ttf; do
     if have "$f"; then
         copy_lines+=("    vendor/xt/$f:\$(TARGET_COPY_OUT_PRODUCT)/fonts/$(basename "$f")")
+        font_files+=("$f")
     else
         missing+=("font $f")
     fi
 done
+
+if [[ ${#font_files[@]} -gt 0 ]]; then
+    if have fonts/fonts_customization.xml; then
+        copy_lines+=("    vendor/xt/fonts/fonts_customization.xml:\$(TARGET_COPY_OUT_PRODUCT)/etc/fonts_customization.xml")
+    else
+        # Loud, because without it the fonts above are dead weight.
+        missing+=("fonts/fonts_customization.xml (fonts are copied but will NOT register)")
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Artwork — boot animation is the only one the platform requires.

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Registers the two fonts shipped by XT-OS.
+
+    Both are used as variable fonts. Android's font stack picks the nearest
+    supported instance from the variation axes, so a single file covers every
+    weight — no separate Bold/Medium files, which is why /product/fonts stays
+    under 1.4 MB total.
+
+    Doto  — the dot-matrix display face. Used for the clock, settings headers,
+            and Nothing-style numerals. Its ROND axis controls dot roundness.
+    Inter — the UI face. Used for body text, where Doto's dots are unreadable
+            at small sizes.
+
+    placement="system" makes these available to the platform; they are NOT set
+    as the default via a font family override except for the specific slots
+    below, so an app or overlay that names its own font still wins.
+-->
+<fonts-modification version="1">
+    <family customizationType="new-named-family" name="doto">
+        <font weight="400" style="normal">Doto-VariableFont.ttf</font>
+    </family>
+
+    <family customizationType="new-named-family" name="inter">
+        <font weight="400" style="normal">Inter-VariableFont.ttf</font>
+    </family>
+</fonts-modification>
