@@ -241,3 +241,82 @@ check on every mechanism, not an optional one.
 New guard: `xt-gapps.mk` now `$(error)`s at parse time if `WITH_GAPPS` is true
 alongside the allowlist, because that combination would re-add all 49 on top of the
 30. Static review cannot catch that; a hard build failure can.
+
+---
+
+## Why the build takes 16 hours (measured, not guessed)
+
+### The number
+
+**verified** From `make.log` birth over the full elapsed window, **verified**:
+
+```
+5,379 / 231,877 targets in 23 min
+3.90 targets/s sustained
+=> full build 16.5 h, remaining 16.1 h
+```
+
+An earlier estimate of 3–3.5 h was wrong by roughly 5×. It came from a 20-second
+sample that happened to land inside a burst of `external/skia` C++ compiles, where
+target throughput is high because the targets are small. Extrapolating short
+windows across a 232k-target DAG is not sound; only elapsed-time averaging is.
+
+### The cause
+
+**verified** The build box is a **gVisor sandbox**, not a normal VM:
+
+```
+/proc/version : Linux version 4.19.0-gvisor #1 SMP ...
+dmesg         : [0.000000] Starting gVisor...
+                [0.356454] Generating random numbers by fair dice roll...
+dmesg         : [0.436085] Moving files to filing cabinet...
+```
+
+Every syscall is intercepted by gVisor's Sentry, a userspace kernel. The CPU
+breakdown shows the cost directly:
+
+| | share |
+|---|---|
+| user | 56.7% |
+| **system** | **35.2%** |
+| idle | 8.0% |
+| iowait | 0.0% |
+| steal | 0.0% |
+
+**35% of CPU time is spent in syscall emulation, not compiling.** A C++ compile is
+fork/exec/read/write/mmap heavy, so this is the worst possible workload for it.
+
+### The fix that looked obvious and was refuted
+
+Raising `-j` above 20 was the first instinct. **The measurement refutes it:** idle is
+8% and steal is 0%, so the 20 cores are already 19.8/20 occupied. The 35% system
+time is not idle gaps waiting to be filled — it is real core-time consumed on
+emulation. More jobs would add contention, not throughput.
+
+### The fix that was available and deliberately rejected
+
+`WITH_DEXPREOPT` is unset, so it defaults to `true` (AOSP's `dex_preopt.mk:16`),
+meaning every app is AOT-compiled at build time. Restricting it to
+boot-image-only would save an estimated 2–3 h.
+
+**Rejected by user decision.** The device is an Exynos 9611 with 6 GB RAM, and the
+stated goal is 3–4 GB free plus efficient idle. Deferring dexpreopt to first launch
+would push that compilation onto the phone at the worst possible moment, trading
+build time for exactly the on-device behaviour this ROM exists to avoid. A slower
+build once is the correct trade.
+
+### What actually makes restarts cheap
+
+**verified** The build is resumable by design: Soong+siso keep a dependency log per
+output, so a re-run skips unchanged targets and continues from the frontier. This is
+why losing an entire box cost only compilation time, never analysis — and why
+copying 17 GB of objects off-host is the wrong protection. There is no persistent
+volume anyway: `/marimo` is on the overlay root and the only 9p mounts are
+single-file binds.
+
+`build/resume-build.sh` wraps this, and refuses to resume onto a drifted tree
+because objects from the wrong tree are worse than no objects.
+
+**ccache status:** wired in (`max_size = 40 GB`, compression on) but **useless for
+the first build** — 0 hits / 1,451 misses, since the cache starts empty. Its value
+is on the second build: config-only changes should drop from ~16 h to single digits.
