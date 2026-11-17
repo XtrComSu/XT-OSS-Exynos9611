@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// XtThemeNothingLight — Nothing-style RRO. Shape matches the verified LineageOS
+// runtime_resource_overlay pattern (name + product_specific only).
+// The manifest supplies targetPackage; certificate/targetSdk are not module
+// properties and were removed deliberately.
+
+runtime_resource_overlay {
+    name: "XtThemeNothingLight",
+    product_specific: true,
+}

@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Soong namespace for the XT overlay layer.
+//
+// vendor/xt is not part of the default namespace, so products can only reference
+// modules defined here if we declare an explicit namespace. That is why this file
+// exists and why `subdirs` must list every directory containing module
+// definitions — a module in a directory not listed here will not be found, and
+// the build fails with `module "X" not found` even though the source is present.
+
+soong_namespace {
+    imports: [
+        "android",
+    ],
+}

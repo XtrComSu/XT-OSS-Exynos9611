@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    XT-OSS-Exynos9611 — overlay manifest for Project Infinity X 4.2 (Android 17)
+
+    Purpose: the upstream M31-family trees carry `lineage.dependencies` files that
+    resolve against the manifest's DEFAULT remote (github.com/ProjectInfinity-X),
+    where none of those repos exist. Every dependency is re-pinned here instead.
+
+    Usage:
+        repo init -u https://github.com/ProjectInfinity-X/manifest -b 17 ...
+        cp XT-OSS-Exynos9611/manifest/xt-exynos9611.xml <tree>/.repo/local_manifests/
+        repo sync -c (force-sync and prune recommended)
+
+    Or just run: ./bootstrap/00-bootstrap.sh ~/xt
+
+    Branch policy (verified 2026-11-17 via GitHub API):
+        device/vendor trees  Parbindar7/*  branch lineage-24.0   (Android 17)
+        kernel               XtrComSu/*    branch lineage-24.0-KSUN
+        hardware/epolicy     LineageOS/*   branch lineage-24.0
+-->
+<manifest>
+
+  <!-- ==================== remotes ==================== -->
+  <remote name="parbindar" fetch="https://github.com/Parbindar7" revision="lineage-24.0" />
+  <remote name="xtk"       fetch="https://github.com/XtrComSu"   revision="lineage-24.0-KSUN" />
+  <remote name="los"       fetch="https://github.com/LineageOS"  revision="lineage-24.0" />
+
+  <!-- ==================== shared: Exynos 9611 common fabric ==================== -->
+  <project path="device/samsung/universal9611-common"
+           name="android_device_samsung_universal9611-common" remote="parbindar" />
+  <project path="vendor/samsung/universal9611-common"
+           name="android_vendor_samsung_universal9611-common" remote="parbindar" />
+
+  <!-- ==================== device: Galaxy M31 (SM-M315F) — PRIMARY ==================== -->
+  <project path="device/samsung/m31" name="android_device_samsung_m31" remote="parbindar" />
+  <project path="vendor/samsung/m31" name="android_vendor_samsung_m31" remote="parbindar" />
+
+  <!-- ==================== device: Galaxy M31s (SM-M317F) ==================== -->
+  <project path="device/samsung/m31s" name="android_device_samsung_m31s" remote="parbindar" />
+  <project path="vendor/samsung/m31s" name="android_vendor_samsung_m31s" remote="parbindar" />
+
+  <!-- ==================== device: Galaxy F41 (SM-F415F) ==================== -->
+  <project path="device/samsung/f41" name="android_device_samsung_f41" remote="parbindar" />
+  <project path="vendor/samsung/f41" name="android_vendor_samsung_f41" remote="parbindar" />
+
+  <!-- ==================== device: Galaxy M21 (SM-M215F) ==================== -->
+  <project path="device/samsung/m21" name="android_device_samsung_m21" remote="parbindar" />
+  <project path="vendor/samsung/m21" name="android_vendor_samsung_m21" remote="parbindar" />
+
+  <!-- ==================== device: Galaxy A51 (SM-A515F) ==================== -->
+  <!-- NOTE: a51 has TARGET_HAS_FOD := true and NXP NFC; it is the odd one out. -->
+  <project path="device/samsung/a51" name="android_device_samsung_a51" remote="parbindar" />
+  <project path="vendor/samsung/a51" name="android_vendor_samsung_a51" remote="parbindar" />
+
+  <!-- ==================== OUR kernel (KSUN + SUSFS) ==================== -->
+  <project path="kernel/samsung/universal9611"
+           name="android_kernel_samsung_universal9611"
+           remote="xtk"
+           revision="lineage-24.0-KSUN" />
+
+  <!-- ==================== hardware / HALs / sepolicy ==================== -->
+  <project path="device/samsung_slsi/sepolicy"           name="android_device_samsung_slsi_sepolicy"            remote="los" />
+  <project path="hardware/samsung"                       name="android_hardware_samsung"                        remote="los" />
+  <project path="hardware/samsung_slsi/libbt"            name="android_hardware_samsung_slsi_libbt"             remote="los" />
+  <project path="hardware/samsung_slsi-linaro/config"    name="android_hardware_samsung_slsi-linaro_config"     remote="los" />
+  <project path="hardware/samsung_slsi-linaro/exynos"    name="android_hardware_samsung_slsi-linaro_exynos"     remote="los" />
+  <project path="hardware/samsung_slsi-linaro/exynos5"   name="android_hardware_samsung_slsi-linaro_exynos5"    remote="los" />
+  <project path="hardware/samsung_slsi-linaro/graphics"  name="android_hardware_samsung_slsi-linaro_graphics"   remote="los" />
+  <project path="hardware/samsung_slsi-linaro/interfaces" name="android_hardware_samsung_slsi-linaro_interfaces" remote="los" />
+  <project path="hardware/samsung_slsi-linaro/openmax"   name="android_hardware_samsung_slsi-linaro_openmax"    remote="los" />
+  <project path="hardware/samsung_slsi/scsc_wifibt/wifi_hal"
+           name="android_hardware_samsung_slsi_scsc_wifibt_wifi_hal" remote="los" />
+  <project path="hardware/samsung_slsi/scsc_wifibt/wpa_supplicant_lib"
+           name="android_hardware_samsung_slsi_scsc_wifibt_wpa_supplicant_lib" remote="los" />
+
+  <!-- ==================== our overlay layer ==================== -->
+  <project path="vendor/xt" name="XT-OSS-Exynos9611" remote="xtk" revision="main" />
+
+</manifest>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Default overlay enablement.
+
+    XtThemeNothing is the shipping default. XtThemeStock is present but NOT
+    enabled: the Themes app flips between them at runtime with
+    `cmd overlay enable/disable`, so nothing here is load-bearing for boot.
+    An RRO that fails to apply is a no-op, not a boot failure — that is the
+    whole reason the visual layer is built as overlays rather than forked code.
+-->
+<config>
+    <overlay package="os.theme.nothing" enabled="true" />
+    <overlay package="os.theme.nothinglight" enabled="false" />
+    <overlay package="os.theme.monet" enabled="false" />
+    <overlay package="os.theme.stock" enabled="false" />
+</config>

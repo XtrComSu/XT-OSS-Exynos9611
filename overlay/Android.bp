@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// RRO theme overlays. Kept in their own directory so the whole design layer can
+// be removed by dropping one `subdirs` entry.
+
+subdirs = [
+    "XtThemeNothing",
+    "XtThemeNothingLight",
+    "XtThemeMonet",
+    "XtThemeStock",
+]

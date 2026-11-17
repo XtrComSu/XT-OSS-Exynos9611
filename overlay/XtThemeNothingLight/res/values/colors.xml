@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Light variant: inverted surfaces, same accent. -->
+<resources>
+    <color name="nothing_black">#FFFFFFFF</color>
+    <color name="nothing_surface">#FFF5F5F5</color>
+    <color name="nothing_line">#FFE0E0E0</color>
+    <color name="nothing_white">#FF000000</color>
+    <color name="nothing_grey">#FF5C5C5C</color>
+    <color name="nothing_dim">#FF9A9A9A</color>
+    <color name="nothing_red">#FFD71921</color>
+</resources>
