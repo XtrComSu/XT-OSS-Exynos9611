@@ -9,7 +9,7 @@ included in any release artifact.
 | Inter (variable) | google/fonts `ofl/inter/Inter[opsz,wght].ttf` | OFL 1.1 — `licenses/fonts/OFL-Inter.txt` | **yes** | sha256 `29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031` |
 | JetBrains Mono | JetBrains | OFL 1.1 | planned | technical readouts, optional |
 | Lawnicons | LawnchairLauncher | Apache-2.0 | planned | monochrome icon pack |
-| Boot animation | ours | own work | planned | 1080x2400, dot-matrix |
+| Boot animation | `build/gen-bootanimation.py` | own work (Apache-2.0) | **yes** | 1080x2400 @30fps, 0.46 MB, generated not hand-drawn |
 | Charging animation | ours | own work | planned | |
 | UI sounds | ours (synthesised) | own work | planned | |
 | Wallpapers | ours / CC0 | own / CC0 | planned | provenance recorded per file |
