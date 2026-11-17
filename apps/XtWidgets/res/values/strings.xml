@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">XT Widgets</string>
+    <string name="widget_clock_name">Dot Clock</string>
+    <string name="widget_status_name">Status</string>
+    <string name="widget_clock_desc">Nothing-style dot-matrix clock</string>
+    <string name="widget_status_desc">Battery and charging state</string>
+</resources>

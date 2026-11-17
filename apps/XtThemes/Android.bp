@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// XtThemes — the theme switcher for XT-OS.
+//
+// Deliberately small and boring. All this app does is call
+// `cmd overlay enable <pkg> / cmd overlay disable <pkg>` for our four RRO
+// packages. It owns no theme code of its own: every visual difference lives in
+// the overlays, so this app can crash or be removed and the system still boots
+// and looks correct (whatever overlay happens to be enabled stays enabled).
+//
+// That separation is the whole design: overlays are the mechanism, this is only
+// the switch. `android_app` with platform_apis is required to shell out to `cmd`
+// as the shell user without a root prompt.
+
+android_app {
+    name: "XtThemes",
+    manifest: "AndroidManifest.xml",
+    srcs: ["src/**/*.java"],
+    resource_dirs: ["res"],
+    platform_apis: true,
+    certificate: "platform",
+    privileged: true,
+    product_specific: true,
+    optimize: {
+        enabled: true,
+        proguard_flags_files: ["proguard.flags"],
+    },
+    aaptflags: ["--no-version-vectors"],
+}

@@ -1,0 +1,4 @@
+# XtThemes has no reflection, no serialization, and no JNI. Keep the entry
+# activity only: the framework instantiates it by name from the manifest, which
+# R8 cannot see.
+-keep class os.xt.themes.ThemeActivity { <init>(...); }

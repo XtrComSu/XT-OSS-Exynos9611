@@ -24,27 +24,33 @@ missing=()
 lines=()
 
 # ---------------------------------------------------------------------------
-# Apps — each must have an Android.bp or Android.mk to be buildable.
+# Apps — NOT handled here any more.
+#
+# The three first-party apps now exist in apps/ and are listed directly in
+# config/xt-common.mk. Emitting them here as well would add every module to
+# PRODUCT_PACKAGES twice. That is not merely untidy: duplicate PRODUCT_PACKAGES
+# entries make the product config dump ambiguous and hide the real list, and if
+# the two sources ever disagree the fragment silently wins because it is
+# -included later.
+#
+# One owner per fact. xt-common.mk owns the app list; this script owns the
+# copy-file assets (fonts, artwork) that depend on binaries we may not have.
+#
+# Verify the apps still build by checking for their Android.bp, and warn — a
+# warning rather than an error, because this script must stay runnable to
+# generate the asset fragment even if one app is mid-edit.
 # ---------------------------------------------------------------------------
 declare -A APPS=(
     [XtThemes]="apps/XtThemes"
     [XtWidgets]="apps/XtWidgets"
     [XtStatus]="apps/XtStatus"
 )
-pkg_lines=()
 for mod in "${!APPS[@]}"; do
     d="${APPS[$mod]}"
-    if have "$d/Android.bp" || have "$d/Android.mk"; then
-        pkg_lines+=("    $mod")
-    else
-        missing+=("app $mod ($d/Android.bp or Android.mk)")
+    if ! have "$d/Android.bp" && ! have "$d/Android.mk"; then
+        missing+=("app $mod has no Android.bp (listed in xt-common.mk)")
     fi
 done
-if [[ ${#pkg_lines[@]} -gt 0 ]]; then
-    lines+=("PRODUCT_PACKAGES += \\")
-    lines+=("$(printf '%s \\\n' "${pkg_lines[@]}" | sed '$ s/ \\$//')")
-    lines+=("")
-fi
 
 # ---------------------------------------------------------------------------
 # Fonts — copied to /product/fonts, registered via fonts_customization.xml.

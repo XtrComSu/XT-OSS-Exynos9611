@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// XtWidgets — Nothing-style home-screen widgets.
+//
+// Scope is deliberately narrow: a dot-matrix clock and a battery/status widget.
+// Both are pure-Canvas custom views, so they need no bitmap assets, no font
+// licensing, and no external design tooling to regenerate. Everything is drawn
+// with Paint, which means the widgets stay sharp at any density and cost almost
+// nothing at runtime.
+//
+// This is the app the plan calls "custom app widgets": the visible layer of the
+// Nothing restyle that a user can actually place on their home screen.
+
+android_app {
+    name: "XtWidgets",
+    manifest: "AndroidManifest.xml",
+    srcs: ["src/**/*.java"],
+    resource_dirs: ["res"],
+    platform_apis: true,
+    certificate: "platform",
+    product_specific: true,
+    aaptflags: ["--no-version-vectors"],
+}
