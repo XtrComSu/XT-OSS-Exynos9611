@@ -42,5 +42,17 @@ TARGET_BOOT_ANIMATION_RES := 1080
 
 ## XT flags
 INFINITY_MAINTAINER := XtrComSu
-WITH_GAPPS := true
+# WITH_GAPPS stays FALSE even though this ROM ships GApps.
+#
+# That flag does not mean "include GApps" here — common.mk:289 uses it to inherit
+# the whole vendor/pixel/gms bundle, all 49 modules. We want a 30-module subset,
+# and AOSP offers no way to remove a module after inherit-product has queued it
+# (inherit-product only appends @inherit: markers; the real PRODUCT_PACKAGES is
+# assembled later by import-nodes). So the only workable route is: do not inherit
+# the bundle, and list what we want.
+#
+# config/xt-gapps.mk owns that list and inherits themepicker + sounds explicitly,
+# which is what this flag used to also pull in. It errors at parse time if this is
+# ever set back to true, so the two cannot drift apart silently.
+WITH_GAPPS := false
 WITHOUT_RESERVED_SIZE := true

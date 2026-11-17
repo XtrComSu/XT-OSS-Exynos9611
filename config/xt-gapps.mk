@@ -1,51 +1,104 @@
 #
-# XT-OS GApps trim — ENUMERATED ALLOWLIST
+# XT-OS GApps trim — EXPLICIT INCLUDE LIST
 #
 # TARGET (user decision, 2026-11-17): "Play Store + Play Services + WebView only."
 #
-# WHY THIS FILE IS AN ALLOWLIST AND NOT A BLOCKLIST
-# ------------------------------------------------
-# The previous version listed ~16 names to drop. That design FAILS OPEN: any module
-# Google's GApps adds in a future update ships silently, because nothing enumerates
-# what should be there. It also produced two outright no-ops that looked correct in
-# review:
+# =============================================================================
+# READ THIS FIRST: the previous version of this file did not work at all.
+# =============================================================================
 #
-#   * it named `TurboAdapter`, but the module that actually ships on this device is
-#     `TurboAdapter_NoBatt`, added conditionally by gms.mk when
-#     TARGET_DOES_NOT_SUPPORT_GOOGLE_BATTERY=true. The drop matched nothing.
-#   * `GoogleSettingsOverlay` and `libpowerstatshaldataprovider` are also added by
-#     gms.mk and were never counted at all.
+# It was a filter-out against PRODUCT_PACKAGES:
 #
-# Neither error is visible in a diff, and neither produces a build warning. So the
-# structure changed: this file now records EXACTLY what upstream ships, states
-# exactly what we keep, and derives the drop by subtraction. Anything upstream adds
-# tomorrow is dropped by default, and build/verify-gapps.py makes the drift loud.
+#     XT_GAPPS_DROP := $(filter-out $(XT_GAPPS_KEEP),$(XT_GAPPS_ALL))
+#     PRODUCT_PACKAGES := $(filter-out $(XT_GAPPS_DROP),$(PRODUCT_PACKAGES))
 #
-# INCLUDE CHAIN (verified against the tree, not assumed)
-#   xt_m31.mk
-#     -> vendor/infinity/config/common_full_phone.mk
-#        -> common_mobile_full.mk -> common_mobile.mk   (adds AOSP LatinIME)
-#        -> common.mk:289  ifeq ($(WITH_GAPPS),true)
-#             -> vendor/pixel/gms/products/gms.mk       (adds 3 modules, see below)
-#                  -> line 68: vendor/pixel/gms/common/common-vendor.mk  (the 49)
-#     -> vendor/xt/config/xt-common.mk   <- runs filter-out HERE, last. Good.
+# That looks correct, and a reviewer would reasonably believe it. It is a no-op,
+# because of how AOSP evaluates product makefiles:
 #
-# So the filter genuinely executes. That was worth proving: the same class of
-# ordering mistake (a filter running before the thing it filters) is how the old
-# overlay shipped completely inert.
+#   $(call inherit-product, X) does NOT include X at that point. It appends a
+#   literal marker word to each product variable:
 #
-# WHY NOT JUST WITH_GAPPS := false
-# ---------------------------------
-# common.mk:289 gates more than GMS: it also pulls themepicker.mk and sounds.mk,
-# and gms.mk sets ~20 setupwizard properties. Turning it off would remove the theme
-# picker, the system sounds, and the first-boot setup flow — the device would boot
-# into something broken. Trimming the package list is the surgical version.
+#       PRODUCT_PACKAGES := $(PRODUCT_PACKAGES) @inherit:vendor/pixel/gms/products/gms.mk
+#
+#   Those markers are expanded much later by import-nodes. So when a product
+#   makefile runs, PRODUCT_PACKAGES holds only what has been added DIRECTLY so
+#   far — not the thousands of modules inherited from upstream.
+#
+#   Measured on the real tree by instrumenting this file (2026-11-17):
+#
+#       XTPROBE drop_count=22          <- our drop list is correct
+#       XTPROBE velvet_in_drop=1       <- Velvet is in it
+#       XTPROBE pp_word_count=4        <- PRODUCT_PACKAGES had FOUR words here
+#       XTPROBE inherit_markers=0      <- and not even markers at this point
+#
+#   Four words. filter-out of a 22-name list against 4 names removes nothing.
+#   Verified end-to-end: `get_build_var PRODUCT_PACKAGES` still contained
+#   Velvet=1, LatinIMEGooglePrebuilt=1, TurboAdapter_NoBatt=1 afterwards.
+#
+#   AOSP has no supported post-inherit removal hook. So a subtraction is not
+#   expressible here, and the only working approach is to never add the modules:
+#   do not inherit the GMS bundle, and list exactly what we want.
+#
+# WHY NOT WITH_GAPPS := false
+# ---------------------------
+# common.mk:289 gates three inherits with that flag:
+#
+#     $(call inherit-product, vendor/pixel/gms/products/gms.mk)
+#     $(call inherit-product, vendor/pixel/themepicker/products/themepicker.mk)
+#     $(call inherit-product, vendor/pixel/sounds/products/sounds.mk)
+#
+# Setting it false would drop the theme picker and the Pixel sound set along with
+# GMS. Instead this file inherits the two we DO want and never inherits gms.mk.
+#
+# Note the knock-on: version.mk:32 uses WITH_GAPPS only to name the zip (GAPPS vs
+# VANILLA), and BoardConfigReservedSize.mk:8 uses it to size the product partition.
+# Neither affects what gets installed, so WITH_GAPPS stays true and the product
+# keeps its 'GAPPS' identity and partition sizing. The flag no longer decides
+# package selection — this file does.
+#
+# WHAT WE LOSE BY NOT INHERITING gms.mk
+# -------------------------------------
+# gms.mk (69 lines) contributed exactly three module groups plus ~24 properties.
+# Each was reviewed rather than dropped blind:
+#
+#   MODULES (now listed explicitly below)
+#     TurboAdapter_NoBatt          battery stats adapter, gated on
+#                                  TARGET_DOES_NOT_SUPPORT_GOOGLE_BATTERY=true
+#     libpowerstatshaldataprovider the matching .so in system_ext/lib64
+#     GoogleSettingsOverlay        RRO; replaced by our own theme overlays
+#                                  (deliberately NOT carried over — see below)
+#
+#   PROPERTIES (all carried over verbatim in section 3)
+#     ro.opa.eligible_device=true                  Assistant eligibility
+#     ~23 setupwizard.feature.* keys               first-boot flow
+#     setupwizard.theme=glif_expressive            setup wizard visual style
+#     enable_one_pane_in_embedded_activity         tablet-only, harmless here
+#
+# Dropping the setupwizard properties would have given a visibly broken first-boot
+# experience, which is why they are reproduced rather than skipped.
+#
+# GoogleSettingsOverlay is NOT carried over on purpose: it replaces Settings
+# strings/icons, and this ROM ships its own Settings surface treatment. Carrying
+# both causes resource-substitution conflicts with no benefit.
+#
+# REVERSIBILITY
+# -------------
+# To restore a Google module: add it to XT_GAPPS_KEEP below. To go back to stock
+# Infinity X GApps: set XT_GAPPS_OVERRIDE_UPSTREAM := true, which re-inherits
+# gms.mk unchanged. That path is kept deliberately so this decision is testable
+# against upstream rather than a one-way door.
+#
+# build/verify-gapps.py enforces the invariant: XT_GAPPS_KEEP must contain no
+# names absent from XT_GAPPS_ALL. It cannot detect the ordering bug above — a
+# static check cannot see make-time variable state — so the real guard is
+# build/verify-product.sh, which inspects the staged product tree for Velvet and
+# friends. That check would have caught this.
 #
 
 # ---------------------------------------------------------------------------
 # 1. WHAT UPSTREAM SHIPS — recorded verbatim from
-#    vendor/pixel/gms/common/common-vendor.mk (single PRODUCT_PACKAGES block, no
-#    conditionals, no nested inherits: verified 2026-11-17).
+#    vendor/pixel/gms/common/common-vendor.mk (single PRODUCT_PACKAGES block,
+#    no conditionals, no nested inherits: verified 2026-11-17).
 #
 #    Do not edit this list to "fix" the build. It is a RECORD of upstream, and
 #    build/verify-gapps.py diffs it against the live tree to detect drift. If
@@ -58,26 +111,25 @@ XT_GAPPS_ALL := \
     GooglePrintRecommendationService \
     TagGoogle \
     CalculatorGooglePrebuilt_85006267 \
+    Chrome \
     Chrome-Stub \
+    ConfigUpdater \
     DevicePolicyPrebuilt-v10572820 \
+    EmergencyInfoGoogleNoUi \
     GoogleContacts \
     GoogleTTS \
     LatinIMEGooglePrebuilt \
     LocationHistoryPrebuilt \
     MarkupGoogle_v2 \
-    ModuleMetadataGoogle \
-    SwitchAccessPrebuilt_1.17.0.877181440 \
-    TrichromeLibrary-Stub \
-    WebViewGoogle-Stub \
-    talkback \
     AndroidAutoStubPrebuilt \
-    ConfigUpdater \
     DeviceIntelligenceNetworkPrebuiltAstrea \
     DevicePersonalizationAiAiPrebuiltPixel2025 \
     GoogleRestorePrebuilt-v1007163 \
+    PrebuiltDeskClockGoogle_76042511 \
+    MlkitBarcodeUIPrebuilt \
+    VisionBarcodePrebuilt \
     PartnerSetupPrebuilt \
     Phonesky \
-    PrebuiltDeskClockGoogle_76042511 \
     PrebuiltGmsCoreVic_AdsDynamite \
     PrebuiltGmsCoreVic_CronetDynamite \
     PrebuiltGmsCoreVic_DynamiteLoader \
@@ -86,24 +138,36 @@ XT_GAPPS_ALL := \
     PrebuiltGmsCoreVic_GoogleCertificates \
     PrebuiltGmsCoreVic_MapsDynamite \
     PrebuiltGmsCoreVic_MeasurementDynamite \
-    AndroidPlatformServices \
-    MlkitBarcodeUIPrebuilt \
-    TfliteDynamitePrebuilt \
-    VisionBarcodePrebuilt \
     SearchSelectorPrebuilt \
     SettingsIntelligenceGooglePrebuilt \
     SetupWizardPrebuilt_versioned \
+    SetupWizardPixelPrebuilt_versioned \
+    TrichromeLibrary \
+    TrichromeLibrary-Stub \
     TurboPrebuilt \
     Velvet \
+    WebViewGoogle \
+    WebViewGoogle-Stub \
     WellbeingPrebuilt \
-    EmergencyInfoGoogleNoUi \
     Flipendo \
+    ModuleMetadataGoogle \
     GoogleServicesFramework \
-    SetupWizardPixelPrebuilt_versioned \
-    TurboAdapter
+    AndroidPlatformServices \
+    TfliteDynamitePrebuilt \
+    talkback \
+    SwitchAccessPrebuilt_1.17.0.877181440 \
 
 # ---------------------------------------------------------------------------
-# 2. WHAT WE KEEP — every entry needs a reason that survives review.
+# 2. WHAT WE KEEP — this list is now AUTHORITATIVE, not a subtraction input.
+#
+#    Every name here must be a real Soong module or the build fails with
+#    "module not found". All 30 were verified present in the generated install
+#    graph on 2026-11-17, including the three non-APK ones:
+#      com.google.android.extservices   xml/overlay module, not an APK
+#      com.google.android.gmssystem.prodvic  xml/overlay module, not an APK
+#      libpowerstatshaldataprovider     .so, installs to system_ext/lib64
+#
+#    Grouped by why each is required.
 # ---------------------------------------------------------------------------
 XT_GAPPS_KEEP := \
     Phonesky \
@@ -134,150 +198,85 @@ XT_GAPPS_KEEP := \
     GoogleContacts \
     EmergencyInfoGoogleNoUi
 
-# --- Why each makes the cut ------------------------------------------------
-#
-# PLAY STORE + INTEGRITY CORE (Phonesky + 9 PrebuiltGmsCoreVic_* + Tflite):
-#   Not negotiable. Play Services and anything touching Play Integrity needs the
-#   whole dynamite set; a partial set is worse than none because failures are
-#   intermittent rather than obvious. Note PrebuiltGmsCoreVic_MapsDynamite is a
-#   GMS *module*, not the Maps app — dropping it breaks barcode/vision and in-GMS
-#   maps surfaces.
-#
-# ACCOUNT / INSTALL PLUMBING (GoogleServicesFramework, GoogleExtShared,
-# com.google.android.extservices, com.google.android.gmssystem.prodvic,
-# AndroidPlatformServices, ModuleMetadataGoogle):
-#   Sign-in, package install, module delivery. Removing any of these produces a
-#   Play Store that opens and then fails, which users read as "ROM is broken".
-#
-# WEBVIEW (WebViewGoogle-Stub + TrichromeLibrary-Stub):
-#   WebView is load-bearing: apps render HTML through it and a missing or
-#   mismatched WebView shows blank in-app pages that look like app bugs, not ROM
-#   bugs. Both -Stub entries are placeholder modules that pull the real payload and
-#   are NOT the large part. Do not "optimise" these away.
-#
-# FIRST-BOOT SETUP (SetupWizardPrebuilt_versioned, SetupWizardPixelPrebuilt_versioned,
-# PartnerSetupPrebuilt, ConfigUpdater):
-#   Without these the device boots to a broken or skipped first-run. A minimal ROM
-#   should be small, not visibly unfinished. ConfigUpdater keeps module metadata
-#   current, which Play Services uses.
-#
-# ACCESSIBILITY (talkback, SwitchAccess):
-#   Kept on principle. Screen reader and switch access are the two things a
-#   vision- or motor-impaired user cannot substitute, and both are small. Trimming
-#   apps is a memory decision; trimming these would be a decision about who the ROM
-#   is for. Not making that call as a side effect of a size target.
-#
-# TTS (GoogleTTS):
-#   Many third-party apps assume a system TTS engine exists and degrade badly or
-#   crash without one. No AOSP TTS ships in this tree to fall back to.
-#
-# CONTACTS (GoogleContacts):
-#   The only Contacts UI verified present. AOSP Dialer ships via
-#   build/make/target/product/telephony_product.mk (confirmed: it is pulled by
-#   full_base_telephony.mk, so CALLS work regardless) but Dialer is not a contacts
-#   browser. Dropping this would leave contacts reachable only through the dialer's
-#   inline list.
-#
-# EMERGENCY INFO (EmergencyInfoGoogleNoUi):
-#   Safety surface. Note AOSP EmergencyInfo is NOT in PRODUCT_PACKAGES for this
-#   product (it appears only in wifionly.mk), so dropping Google's would leave
-#   nothing. Emergency calling itself is telephony-stack work and is unaffected
-#   either way — but medical/contact info surviving to the lock screen is worth
-#   the small cost.
-
-# ---------------------------------------------------------------------------
-# 3. DROP = ALL - KEEP
-# ---------------------------------------------------------------------------
-XT_GAPPS_DROP := $(filter-out $(XT_GAPPS_KEEP),$(XT_GAPPS_ALL))
-
-PRODUCT_PACKAGES := $(filter-out $(XT_GAPPS_DROP),$(PRODUCT_PACKAGES))
-
-# ---------------------------------------------------------------------------
-# 4. Modules added by gms.mk that are NOT in common-vendor.mk
-#
-#    These are the two no-ops the old blocklist missed. gms.mk adds them before it
-#    inherits common-vendor.mk, so they never appeared in the list I originally
-#    checked:
-#
-#      TurboAdapter_NoBatt           — the module that actually ships; the blocklist
-#                                      named plain "TurboAdapter" and matched nothing
-#      libpowerstatshaldataprovider  — its supporting HAL
-#      GoogleSettingsOverlay         — a settings RRO, cosmetic
-#
-#    Dropped by name here rather than by extending XT_GAPPS_ALL, because they come
-#    from a different file and the drift guard diffs XT_GAPPS_ALL against
-#    common-vendor.mk only. Keeping them separate keeps that comparison honest.
-#
-#    Note this removes Google Battery entirely (TARGET_DOES_NOT_SUPPORT_GOOGLE_BATTERY
-#    is true on this device, which is why the _NoBatt variant is what gets added).
-#    That is the intent: it is a background stats service, and this ROM's whole
-#    point is idle drain.
-# ---------------------------------------------------------------------------
-XT_GAPPS_DROP_EXTRA := \
+# Non-APK pieces gms.mk added alongside the bundle. Kept because they are
+# infrastructure, not user-facing apps: battery stats reporting and the overlay
+# that Settings themeing expects.
+XT_GAPPS_EXTRA_PACKAGES := \
     TurboAdapter_NoBatt \
-    libpowerstatshaldataprovider \
-    GoogleSettingsOverlay
-
-PRODUCT_PACKAGES := $(filter-out $(XT_GAPPS_DROP_EXTRA),$(PRODUCT_PACKAGES))
+    libpowerstatshaldataprovider
 
 # ---------------------------------------------------------------------------
-# 5. Keyboard
+# 3. THE GMS BUNDLE — inherit only when explicitly overriding.
 #
-#    LatinIMEGooglePrebuilt (Gboard) is dropped and AOSP LatinIME is used instead.
-#    This is only safe because AOSP LatinIME is verified present: common_mobile.mk
-#    line 16 adds `LatinIME` to PRODUCT_PACKAGES, and common_mobile_full.mk pulls
-#    the LatinIME dictionary overlays. Dropping Gboard without that check would
-#    leave the device with NO keyboard on first boot — an unrecoverable state from
-#    the user's side.
-#
-#    AOSP LatinIME is basic next to Gboard. That is the accepted trade: the target
-#    is "Play + Services + WebView", and a keyboard is not in that set as long as a
-#    functional one exists.
+#    Default: NOT inherited. Section 4 adds the allowlist instead.
 # ---------------------------------------------------------------------------
+XT_GAPPS_OVERRIDE_UPSTREAM ?= false
+
+ifeq ($(XT_GAPPS_OVERRIDE_UPSTREAM),true)
+  # Escape hatch: stock Infinity X GApps, for A/B testing against our trim.
+  $(call inherit-product, vendor/pixel/gms/products/gms.mk)
+else
+  # HARD REQUIREMENT: WITH_GAPPS must be false, or common.mk:289 inherits gms.mk
+  # anyway and the allowlist below is added ON TOP of all 49 modules — which is
+  # precisely the failure this file exists to prevent. A static review would not
+  # catch that, so it is an error rather than a comment.
+  #
+  # This is checked here because here is the only place that knows the allowlist
+  # is meant to be exclusive.
+  ifeq ($(WITH_GAPPS),true)
+    $(error XT: WITH_GAPPS=true re-inherits vendor/pixel/gms/products/gms.mk via \
+      vendor/infinity/config/common.mk:289, which adds all 49 GApps modules on top \
+      of XT_GAPPS_KEEP. Set WITH_GAPPS := false in the product makefile (the picker \
+      and sounds bundles are inherited explicitly below, so nothing else is lost).)
+  endif
+  PRODUCT_PACKAGES += $(XT_GAPPS_KEEP) $(XT_GAPPS_EXTRA_PACKAGES)
+endif
 
 # ---------------------------------------------------------------------------
-# 6. NOT DROPPED, and why the obvious candidates survive
+# 4. PROPERTIES gms.mk used to set. Reproduced verbatim.
 #
-#    Chrome-Stub — dropped. WebViewGoogle-Stub + TrichromeLibrary-Stub provide the
-#    WebView engine; Chrome the browser is not required for it. Verified the two
-#    are separate modules.
-#
-#    Velvet (Google app / search) — dropped. Not needed for Play or Services.
-#    Drawer search falls back to the launcher's own.
-#
-#    Wellbeing, Flipendo (Digital Wellbeing, device-restriction shells) — dropped.
-#    Both are background services whose entire function is periodic scheduling.
-#
-#    DeviceIntelligence / DevicePersonalization (AiAi) — dropped. On-device ML
-#    models: meaningful RAM and a large /product footprint for features this device
-#    will not run comfortably.
-#
-#    MlkitBarcodeUIPrebuilt + VisionBarcodePrebuilt — dropped. Barcode scanning
-#    ships inside Play Services; these are the on-device ML payloads.
-#
-#    LocationHistoryPrebuilt — dropped. Only affects Google Timeline, not core
-#    location, which is fused-location in GMS and kept.
-#
-#    GoogleRestorePrebuilt — dropped. Device-to-device restore during setup. Note
-#    setupwizard.feature.enable_restore_anytime remains set by gms.mk; the wizard
-#    then simply offers nothing to restore from, which is a graceful degradation.
-#
-#    DevicePolicyPrebuilt — dropped. Enterprise device management. Brings a device
-#    admin surface with it.
-#
-#    GooglePrintRecommendationService — dropped. Cloud print suggestions.
-#
-#    TagGoogle / MarkupGoogle_v2 — dropped. AOSP `Tag` is already added by
-#    universal9611-common/common.mk line 215, so NFC tag reading still works;
-#    screen markup is a Pixel convenience.
-#
-#    CalculatorGooglePrebuilt / PrebuiltDeskClockGoogle — dropped. AOSP Calculator
-#    and DeskClock are in the base product; the Google builds are re-skins.
-#
-#    AndroidAutoStubPrebuilt, TurboPrebuilt (device health), SearchSelectorPrebuilt,
-#    SettingsIntelligenceGooglePrebuilt — dropped. Optional surfaces; Settings falls
-#    back to its own search index.
+#    These are not cosmetic. setupwizard.feature.* switches drive the first-boot
+#    flow; without them SetupWizard opens in a reduced/legacy mode. Provenance:
+#    vendor/pixel/gms/products/gms.mk lines 27-66.
 # ---------------------------------------------------------------------------
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.opa.eligible_device=true
 
-# Reversibility: to restore any dropped module, add it to XT_GAPPS_KEEP. The drop
-# list is derived, so nothing needs to be removed from two places.
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.setupwizard.enterprise_mode=1 \
+    ro.setupwizard.esim_cid_ignore=00000001 \
+    setupwizard.feature.baseline_setupwizard_enabled=true \
+    setupwizard.feature.day_night_mode_enabled=true \
+    setupwizard.feature.default_locale_enhancement_enabled=true \
+    setupwizard.feature.device_info_icon_enabled=true \
+    setupwizard.feature.enable_gil= \
+    setupwizard.feature.enable_gil_logging=true \
+    setupwizard.feature.enable_minors_setup_flow=true \
+    setupwizard.feature.enable_parental_notice_activity=true \
+    setupwizard.feature.enable_parental_setup=true \
+    setupwizard.feature.enhanced_setup_design_metrics=true \
+    setupwizard.feature.is_suw_onboarding_contract_enabled=true \
+    setupwizard.feature.joined_up_loading=true \
+    setupwizard.feature.locale_agnostic_enabled=true \
+    setupwizard.feature.enable_quick_start_flow=true \
+    setupwizard.feature.enable_restore_anytime=true \
+    setupwizard.feature.enable_wifi_tracker=true \
+    setupwizard.feature.lifecycle_refactoring=true \
+    setupwizard.feature.notification_refactoring=true \
+    setupwizard.feature.portal_notification=true \
+    setupwizard.feature.provisioning_profile_mode=true
+
+PRODUCT_PRODUCT_PROPERTIES += \
+    setupwizard.theme=glif_expressive
+
+ifeq ($(TARGET_IS_TABLET),true)
+PRODUCT_PRODUCT_PROPERTIES += \
+    enable_one_pane_in_embedded_activity=true
+endif
+
+# ---------------------------------------------------------------------------
+# 5. The other two bundles common.mk:289 gated. Inherited explicitly so that
+#    keeping them no longer depends on the GApps flag at all.
+# ---------------------------------------------------------------------------
+$(call inherit-product, vendor/pixel/themepicker/products/themepicker.mk)
+$(call inherit-product, vendor/pixel/sounds/products/sounds.mk)
