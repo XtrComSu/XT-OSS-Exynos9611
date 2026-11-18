@@ -45,10 +45,15 @@ PRODUCT_PROPERTY_OVERRIDES += \
 #    and Nothing's design language does not use it. Off by default; the Themes
 #    app can turn it back on at runtime.
 # ---------------------------------------------------------------------------
+#    Two of these cannot be set here. The device tree already defines
+#    ro.surface_flinger.supports_background_blur and debug.sf.auto_latch_unsignaled
+#    in properties/vendor.prop, and AOSP's post_process_props.py aborts the build
+#    when the same key is assigned twice with DIFFERENT values (identical values
+#    are deduped silently, which is why the other props here are harmless).
+#    Delta D7 rewrites the device tree's values instead, so there is one source of
+#    truth and the efficiency intent below is preserved rather than dropped.
 PRODUCT_PROPERTY_OVERRIDES += \
-    ro.surface_flinger.supports_background_blur=0 \
     ro.surface_flinger.max_frame_buffer_acquired_buffers=3 \
-    debug.sf.auto_latch_unsignaled=1 \
     debug.sf.enable_gl_backpressure=1
 
 # ---------------------------------------------------------------------------

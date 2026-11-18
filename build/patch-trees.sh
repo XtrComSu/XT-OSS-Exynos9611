@@ -353,6 +353,62 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+say "D7: align device-tree vendor.prop with XT efficiency props"
+# ---------------------------------------------------------------------------
+# AOSP's build/make/tools/post_process_props.py:118 aborts when one key is
+# assigned twice with DIFFERENT values ("error: found duplicate sysprop
+# assignments"). Identical duplicates are deduped silently, which is why most of
+# our overrides coexist with the device tree unnoticed — but two do not:
+#
+#   ro.surface_flinger.supports_background_blur   ours 0   device tree 1
+#   debug.sf.auto_latch_unsignaled                ours 1   device tree 0
+#
+# Dropping our overrides would silence the error and lose the point: both are
+# RAM/GPU savings on M31-class hardware (Mali-G72 MP3). So the device tree's copy
+# is rewritten to our value and our overrides for those two keys are removed, so
+# exactly one file states each key. sed is anchored on the full key + value so an
+# upstream value change makes this delta fail loudly instead of silently no-oping.
+#
+VPROP_DEV="device/samsung/universal9611-common/properties/vendor.prop"
+if [[ -f "$VPROP_DEV" ]]; then
+    if grep -q '^ro\.surface_flinger\.supports_background_blur=1$' "$VPROP_DEV"; then
+        sed -i 's|^ro\.surface_flinger\.supports_background_blur=1$|ro.surface_flinger.supports_background_blur=0|' "$VPROP_DEV"
+        ok "blur disabled in device vendor.prop (was 1)"
+    elif grep -q '^ro\.surface_flinger\.supports_background_blur=0$' "$VPROP_DEV"; then
+        ok "blur already disabled"
+    else
+        warn "blur key absent or unexpected value — inspect $VPROP_DEV"
+    fi
+
+    if grep -q '^debug\.sf\.auto_latch_unsignaled=0$' "$VPROP_DEV"; then
+        sed -i 's|^debug\.sf\.auto_latch_unsignaled=0$|debug.sf.auto_latch_unsignaled=1|' "$VPROP_DEV"
+        ok "auto_latch_unsignaled=1 in device vendor.prop (was 0)"
+    elif grep -q '^debug\.sf\.auto_latch_unsignaled=1$' "$VPROP_DEV"; then
+        ok "auto_latch_unsignaled already 1"
+    else
+        warn "auto_latch key absent or unexpected value — inspect $VPROP_DEV"
+    fi
+
+    # Verify the outcome, not that sed ran.
+    if grep -q '^ro\.surface_flinger\.supports_background_blur=0$' "$VPROP_DEV" \
+    && grep -q '^debug\.sf\.auto_latch_unsignaled=1$' "$VPROP_DEV"; then
+        ok "verified: device tree now matches XT intent"
+    else
+        die "D7 verification failed in $VPROP_DEV"
+    fi
+
+    # No key may appear twice anywhere in this file: that is the exact condition
+    # post_process_props.py rejects.
+    dupes=$(grep -oE '^[A-Za-z0-9_.]+=' "$VPROP_DEV" | sort | uniq -d)
+    if [[ -n "$dupes" ]]; then
+        die "duplicate keys remain in $VPROP_DEV: $dupes"
+    fi
+    ok "verified: no duplicate keys in vendor.prop"
+else
+    warn "$VPROP_DEV absent — device tree not synced; nothing to patch"
+fi
+
+# ---------------------------------------------------------------------------
 say "Summary"
 # ---------------------------------------------------------------------------
 printf '    patches applied to %s\n' "$TREE"
