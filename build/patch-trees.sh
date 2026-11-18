@@ -316,6 +316,43 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+say "D6: SDV lifecycle_manager host variant (A17 soong analysis abort)"
+# ---------------------------------------------------------------------------
+# Android 17's soong analyses EVERY Android.bp in the tree before honouring the
+# product, so a module we never ship can still stop the build. Here
+# system/software_defined_vehicle/lifecycle_management imports
+# "google.sdv.identity-V2" while declaring host_supported: true, but the module
+# it imports (hardware/sdv/interfaces/.../service_discovery) sets
+# host_supported: false via sdv_sd_aidl_defaults. Soong resolves AIDL imports
+# per-variant, so the host variant of identity genuinely does not exist and
+# analysis dies with "Import does not exist: google.sdv.identity".
+#
+# SDV is automotive — an SM-M315F phone never builds it. Aligning the importer to
+# device-only is the minimal, honest fix: it changes no device behaviour and does
+# not fake a missing module. Verified by re-running soong analysis after patching.
+#
+LM="system/software_defined_vehicle/lifecycle_management/aidl/Android.bp"
+if [[ -f "$LM" ]]; then
+    if grep -q 'host_supported: true' "$LM"; then
+        sed -i '0,/host_supported: true/s//host_supported: false/' "$LM"
+        ok "set host_supported: false in lifecycle_manager (device-only)"
+    elif grep -q 'host_supported: false' "$LM"; then
+        ok "already device-only"
+    else
+        # No explicit flag: insert one so the aidl_interface stops claiming host.
+        sed -i '0,/aidl_interface {/s//aidl_interface {\n    host_supported: false,/' "$LM"
+        ok "inserted host_supported: false in lifecycle_manager"
+    fi
+    if grep -q 'host_supported: false' "$LM"; then
+        ok "verified: lifecycle_manager is device-only"
+    else
+        die "D6 verification failed in $LM"
+    fi
+else
+    warn "$LM absent — SDV tree not synced; nothing to patch"
+fi
+
+# ---------------------------------------------------------------------------
 say "Summary"
 # ---------------------------------------------------------------------------
 printf '    patches applied to %s\n' "$TREE"
