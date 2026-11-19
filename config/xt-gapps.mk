@@ -229,6 +229,27 @@ else
       of XT_GAPPS_KEEP. Set WITH_GAPPS := false in the product makefile (the picker \
       and sounds bundles are inherited explicitly below, so nothing else is lost).)
   endif
+  # THE NAMESPACE — without this, every module above silently fails to install.
+  #
+  # vendor/pixel/gms/common/Android.bp:5 declares `soong_namespace {}`, so the 67
+  # modules defined in that directory only exist if the namespace is registered.
+  # The registration lives in vendor/pixel/gms/common/common-vendor.mk:5
+  # (`PRODUCT_SOONG_NAMESPACES += ...`), which is inherited ONLY by
+  # vendor/pixel/gms/products/gms.mk:68 -- the bundle this file deliberately does
+  # not inherit. So soong never instantiated Phonesky, GoogleTTS, talkback,
+  # ConfigUpdater, GoogleContacts or the Dynamite modules, generated zero install
+  # rules, and the build stayed green.
+  #
+  # Measured proof (2026-11-19): Phonesky was in PRODUCT_PACKAGES (count=1),
+  # `m Phonesky` resolved ("known"), yet out/soong/build.xt_m31.ninja and
+  # out/soong/installs-xt_m31.mk both had zero references and no Phonesky.apk was
+  # built anywhere. The first 1.4 GB zip shipped with no Play Store at all.
+  #
+  # Only the namespace is added, NOT common-vendor.mk, because that file also
+  # PRODUCT_COPY_FILES Chrome.apk.gz, TrichromeLibrary.apk.gz and WebViewGoogle
+  # as raw copies, which is not the trim this ROM wants.
+  PRODUCT_SOONG_NAMESPACES += vendor/pixel/gms/common
+
   PRODUCT_PACKAGES += $(XT_GAPPS_KEEP) $(XT_GAPPS_EXTRA_PACKAGES)
 endif
 
