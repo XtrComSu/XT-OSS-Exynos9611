@@ -169,6 +169,14 @@ XT_GAPPS_ALL := \
 #
 #    Grouped by why each is required.
 # ---------------------------------------------------------------------------
+#    NOT INCLUDED, deliberately: WebViewGoogle-Stub and TrichromeLibrary-Stub.
+#    Both declare `overrides: ["webview"]` / ["TrichromeLibrary"], and a soong
+#    override REMOVES the overridden module from the install set. Keeping them
+#    meant the real AOSP WebView provider (external/chromium-webview, 262 MB,
+#    arm64 prebuilt) was knocked out and the ROM shipped with only a 12 KB stub
+#    as its WebView -- so no browser or in-app web view could render anything.
+#    The stubs exist so Play Store can swap in a newer WebView later; dropping
+#    them gives a working provider out of the box, which matters more.
 XT_GAPPS_KEEP := \
     Phonesky \
     PrebuiltGmsCoreVic_AdsDynamite \
@@ -186,8 +194,6 @@ XT_GAPPS_KEEP := \
     com.google.android.gmssystem.prodvic \
     AndroidPlatformServices \
     ModuleMetadataGoogle \
-    WebViewGoogle-Stub \
-    TrichromeLibrary-Stub \
     SetupWizardPrebuilt_versioned \
     SetupWizardPixelPrebuilt_versioned \
     PartnerSetupPrebuilt \
