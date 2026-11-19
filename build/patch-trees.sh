@@ -409,6 +409,60 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+say "D8: sepolicy keys.conf needs testkey.* alongside our releasekey"
+# ---------------------------------------------------------------------------
+# Build died at 645/22,646 targets:
+#
+#   m4 ... system/sepolicy/private/keys.conf device/lineage/.../keys.conf
+#   stderr: Path vendor/xt/keys/testkey.x509.pem does not exist or is not a file!
+#
+# Why: keys.conf:34-36 uses "$DEFAULT_SYSTEM_DEV_CERTIFICATE/testkey.x509.pem".
+# DEFAULT_SYSTEM_DEV_CERTIFICATE resolves to vendor/xt/keys/releasekey, so the
+# expansion is vendor/xt/keys/releasekey/testkey.x509.pem -- a nested path that
+# cannot exist, because our key set is flat files whose base name is releasekey,
+# not testkey. build/gen-release-keys.sh creates 19 files and no testkey at all.
+#
+# The tempting fix is to point PRODUCT_DEFAULT_DEV_CERTIFICATE at AOSP's
+# build/make/target/product/security/testkey. That builds green and ships
+# ro.build.tags=test-keys, which is on this project's never-ship list. So instead
+# testkey.{x509.pem,pk8} are created as copies of OUR releasekey: sepolicy gets a
+# file to open, and the certificate stays ours (CN = XT-OS releasekey).
+#
+KD="vendor/xt/keys"
+if [[ -d "$KD" && -f "$KD/releasekey.x509.pem" && -f "$KD/releasekey.pk8" ]]; then
+    made=""
+    if [[ ! -f "$KD/testkey.x509.pem" ]]; then
+        cp "$KD/releasekey.x509.pem" "$KD/testkey.x509.pem"
+        chmod 644 "$KD/testkey.x509.pem"
+        made="x509"
+    fi
+    if [[ ! -f "$KD/testkey.pk8" ]]; then
+        cp "$KD/releasekey.pk8" "$KD/testkey.pk8"
+        chmod 600 "$KD/testkey.pk8"
+        made="$made pk8"
+    fi
+    if [[ -n "${made// /}" ]]; then
+        ok "created testkey alias from releasekey ($made)"
+    else
+        ok "testkey alias already present"
+    fi
+
+    # The alias must be the SAME certificate as releasekey -- if someone replaced
+    # it with AOSP's public testkey, signatures stop being ours and the release
+    # guarantee silently disappears. Compare fingerprints instead of trusting
+    # that the copy happened.
+    fp_rel=$(openssl x509 -in "$KD/releasekey.x509.pem" -noout -fingerprint -sha256 2>/dev/null)
+    fp_tst=$(openssl x509 -in "$KD/testkey.x509.pem" -noout -fingerprint -sha256 2>/dev/null)
+    if [[ "$fp_rel" == "$fp_tst" && -n "$fp_rel" ]]; then
+        ok "verified: testkey alias == releasekey ($(echo "$fp_rel" | sed 's/.*=//'))"
+    else
+        die "D8: testkey.x509.pem is NOT our releasekey — release signing would be lost"
+    fi
+else
+    warn "$KD or releasekey.* absent — run build/gen-release-keys.sh first"
+fi
+
+# ---------------------------------------------------------------------------
 say "Summary"
 # ---------------------------------------------------------------------------
 printf '    patches applied to %s\n' "$TREE"
