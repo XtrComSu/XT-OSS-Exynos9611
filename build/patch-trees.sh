@@ -509,6 +509,14 @@ for fc in "system/sepolicy/private/file_contexts" "system/sepolicy/prebuilts/api
     fi
 done
 
+fctd="system/sepolicy/contexts/file_contexts_test_data"
+if [[ -f "$fctd" ]]; then
+    if ! grep -q '^/dev/ion[[:space:]]' "$fctd"; then
+        sed -i '/^\/dev\/dma_heap\/system[[:space:]]/a /dev/ion                                                          dmabuf_system_heap_device' "$fctd"
+        ok "added /dev/ion test entry to $fctd"
+    fi
+fi
+
 # ---------------------------------------------------------------------------
 say "D10: LineageFrameworksOverlay GMS extension & module metadata package names"
 # ---------------------------------------------------------------------------
