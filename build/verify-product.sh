@@ -45,11 +45,22 @@ find_one() {
 
 printf '=== product contents: %s ===\n\n' "$OUT"
 
-printf 'apps:\n'
-for a in XtThemes XtWidgets XtStatus; do
+printf 'apps (unified XT-Debug + VoLTE/IMS + Minimal GApps):\n'
+for a in XtDebug ImsStack TeleService CarrierSettings Phonesky; do
     p=$(find_one "$a.apk")
     [[ -n "$p" ]] && ok "$a.apk  ($(stat -c%s "$p" | numfmt --to=iec 2>/dev/null || stat -c%s "$p") B)" \
-                  || bad "$a.apk — the app will not be on the device"
+                  || bad "$a.apk — required app missing from product"
+done
+for legacy in XtThemes XtWidgets XtStatus; do
+    p=$(find_one "$legacy.apk")
+    [[ -z "$p" ]] && ok "$legacy.apk absent (merged into XtDebug)" \
+                  || soft "$legacy.apk still present in staging dir: $p"
+done
+
+printf '\nzram & swap configs:\n'
+for z in xt_zram_swap.rc fstab.zram fstab.zram.2g fstab.zram.4g fstab.zram.6g; do
+    p=$(find_one "$z")
+    [[ -n "$p" ]] && ok "$z" || bad "$z — ZRAM/Swap config missing"
 done
 
 printf '\ntheme overlays:\n'
