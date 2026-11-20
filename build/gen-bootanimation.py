@@ -3,191 +3,183 @@
 """
 gen-bootanimation.py — build XT-OS's bootanimation.zip from scratch.
 
-Design:
-  - True AMOLED black (#000000) 1080x2400 canvas matching the M31/A51 panel.
-  - Center emblem: Infinity-X (∞) lemniscate rendered as a Nothing-style
-    dot-matrix wave in pure white (#FFFFFF) with a travelling Nothing-red
-    (#D71921) pulse and subtle outer dot-ring ticks.
-  - Brand header: "XT-OSS" in Doto dot-matrix display typography.
-  - Tagline: "WELCOME TO THE FUTURE OF FREEDOM" in tracked-out Inter typography.
-  - Footer badge: "PROJECT INFINITY-X  //  ANDROID 17".
+Design: a Nothing-style dot matrix that assembles itself into the XT mark, then
+pulses once in accent red. 1080x2400 to match the M31 panel exactly, so the
+device never scales frames (scaling during boot costs frames on a weak SoC).
+
+Why frames are generated rather than drawn: a bootanimation is a zip of PNGs plus
+a descriptor. Generating them keeps the whole asset reproducible from this script
+with no binary blobs in git history that nobody can regenerate.
 
 Output layout expected by the platform:
     bootanimation.zip
       desc.txt          frames/s, resolution, frame counts
-      part0/000.png ... intro reveal (plays once)
-      part1/000.png ... seamless orbital pulse loop
+      part0/000.png ... frames of the first segment
+      part1/000.png ... frames that LOOP (default) or play once (with a 'c')
+
+A note on size: 1080x2400 true-black PNGs compress extremely well because most
+of the frame is a constant colour, which is also why true black is the right
+choice here — it is the cheapest thing an AMOLED can display.
 """
 
-import math
+import os
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 W, H = 1080, 2400
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
-RED = (215, 25, 33)      # #D71921, Nothing / XT-OS accent
-DIM = (110, 110, 110)
-SUBTLE = (52, 52, 52)
+RED = (215, 25, 33)      # #D71921, the single system accent
+DIM = (92, 92, 92)
 
+# The zip belongs in artwork/, not next to this script: build/ holds tools,
+# artwork/ holds shipped assets. Deriving it from __file__ would put the
+# generated artifact in build/, which is how this got written to the wrong place
+# the first time.
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "artwork"
 STAGE = OUT / "_stage"
-FONTS = ROOT / "fonts"
 
-INTRO_FRAMES = 28
-LOOP_FRAMES = 16
+# Boot sequence: dots fade in as a grid, contract into the mark, flash red.
+GRID_FRAMES = 18
+CONTRACT_FRAMES = 16
+PULSE_FRAMES = 10
+HOLD_FRAMES = 2
+
 FPS = 30
 
 
-def load_font(name, size):
-    path = FONTS / name
-    if path.exists():
-        return ImageFont.truetype(str(path), size)
-    return ImageFont.load_default()
+def dot_grid(draw, cx, cy, spacing, radius, color, cols, rows, skip=None):
+    """Draw a centred dot grid, optionally skipping cells in `skip`."""
+    x0 = cx - (cols - 1) * spacing / 2
+    y0 = cy - (rows - 1) * spacing / 2
+    for r in range(rows):
+        for c in range(cols):
+            if skip and (c, r) in skip:
+                continue
+            x = x0 + c * spacing
+            y = y0 + r * spacing
+            draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=color)
 
 
-FONT_TITLE = load_font("Doto-VariableFont.ttf", 84)
-FONT_SUB = load_font("Inter-VariableFont.ttf", 25)
-FONT_BADGE = load_font("Doto-VariableFont.ttf", 22)
-
-
-def lerp_color(c1, c2, t):
-    t = max(0.0, min(1.0, t))
-    return (
-        int(c1[0] + (c2[0] - c1[0]) * t),
-        int(c1[1] + (c2[1] - c1[1]) * t),
-        int(c1[2] + (c2[2] - c1[2]) * t),
-    )
-
-
-def smoothstep(t):
-    t = max(0.0, min(1.0, t))
-    return t * t * (3.0 - 2.0 * t)
-
-
-def draw_centered_text(draw, y, text, font, fill, tracking=0):
-    if tracking <= 0:
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        draw.text(((W - tw) / 2, y), text, font=font, fill=fill)
-        return
-    widths = [draw.textlength(ch, font=font) for ch in text]
-    total_w = sum(widths) + tracking * max(0, len(text) - 1)
-    x = (W - total_w) / 2
-    for ch, cw in zip(text, widths):
-        draw.text((x, y), ch, font=font, fill=fill)
-        x += cw + tracking
-
-
-def draw_infinity_emblem(draw, cx, cy, reveal_t, phase_t):
-    """
-    Draw the Infinity-X (∞) dot-matrix emblem + outer orbital ticks.
-    reveal_t in [0, 1]: fraction of the emblem revealed during part0.
-    phase_t  in [0, 1): travelling red pulse phase around the lemniscate.
-    """
-    # Outer precision dial ticks (Nothing aesthetic)
-    ring_r = 250
-    num_ticks = 48
-    ring_alpha = smoothstep((reveal_t - 0.15) / 0.6)
-    if ring_alpha > 0:
-        for i in range(num_ticks):
-            ang = (2.0 * math.pi * i) / num_ticks
-            is_cardinal = (i % 12 == 0)
-            col = lerp_color(BLACK, RED if is_cardinal else SUBTLE, ring_alpha)
-            rad = 4.0 if is_cardinal else 2.2
-            tx = cx + ring_r * math.cos(ang)
-            ty = cy + ring_r * math.sin(ang)
-            draw.ellipse([tx - rad, ty - rad, tx + rad, ty + rad], fill=col)
-
-    # Lemniscate of Bernoulli (∞):
-    # x = a * cos(t) / (1 + sin^2(t)), y = a * sin(t)*cos(t) / (1 + sin^2(t))
-    a = 185.0
-    num_dots = 64
-    active_dots = int(round(num_dots * smoothstep(reveal_t / 0.75)))
-    for i in range(active_dots):
-        u = i / num_dots
-        t = 2.0 * math.pi * u
-        denom = 1.0 + math.sin(t) ** 2
-        x = cx + (a * math.cos(t)) / denom
-        y = cy + (a * math.sin(t) * math.cos(t)) / denom
-
-        # Distance along loop to the travelling pulse
-        dist = abs((u - phase_t + 0.5) % 1.0 - 0.5)
-        pulse = max(0.0, 1.0 - dist / 0.18)
-        pulse = smoothstep(pulse)
-
-        base_col = lerp_color(WHITE, RED, pulse)
-        dot_r = 6.0 + 3.0 * pulse
-        draw.ellipse([x - dot_r, y - dot_r, x + dot_r, y + dot_r], fill=base_col)
-
-
-def render_frame(reveal_t, phase_t):
+def frame_grid(i, n):
+    """Dots appear progressively from the centre outward."""
     img = Image.new("RGB", (W, H), BLACK)
     d = ImageDraw.Draw(img)
 
-    cx, cy = W // 2, H // 2 - 140
-    draw_infinity_emblem(d, cx, cy, reveal_t, phase_t)
+    cols, rows = 13, 13
+    spacing = 74
+    cx, cy = W // 2, H // 2
 
-    # Brand header: XT-OSS
-    title_alpha = smoothstep((reveal_t - 0.25) / 0.45)
-    if title_alpha > 0:
-        y_title = cy + 320
-        col_white = lerp_color(BLACK, WHITE, title_alpha)
-        col_red = lerp_color(BLACK, RED, title_alpha)
+    progress = (i + 1) / n
+    # Distance-based reveal: centre cells first, giving a "materialising" feel.
+    maxd = ((cols // 2) ** 2 + (rows // 2) ** 2) ** 0.5
+    for r in range(rows):
+        for c in range(cols):
+            dx = c - cols // 2
+            dy = r - rows // 2
+            dist = (dx * dx + dy * dy) ** 0.5
+            # Cells beyond the current radius stay dark.
+            if dist / maxd > progress:
+                continue
+            x = cx + dx * spacing
+            y = cy + dy * spacing
+            rad = spacing * 0.28
+            d.ellipse([x - rad, y - rad, x + rad, y + rad], fill=WHITE)
 
-        # Measure "XT" + "-" + "OSS" to color the hyphen Nothing Red
-        parts = [("XT", col_white), ("-", col_red), ("OSS", col_white)]
-        widths = [d.textlength(p[0], font=FONT_TITLE) for p in parts]
-        gap = 8
-        total_w = sum(widths) + gap * (len(parts) - 1)
-        x = (W - total_w) / 2
-        for (txt, col), w in zip(parts, widths):
-            d.text((x, y_title), txt, font=FONT_TITLE, fill=col)
-            x += w + gap
+    return img
 
-    # Tagline: WELCOME TO THE FUTURE OF FREEDOM
-    sub_alpha = smoothstep((reveal_t - 0.48) / 0.45)
-    if sub_alpha > 0:
-        y_sub = cy + 440
-        col_sub = lerp_color(BLACK, (195, 195, 195), sub_alpha)
-        draw_centered_text(
-            d, y_sub, "WELCOME TO THE FUTURE OF FREEDOM", FONT_SUB, col_sub, tracking=5
-        )
 
-        # Thin red accent underline bar
-        bar_w = int(160 * sub_alpha)
-        if bar_w > 2:
-            y_bar = y_sub + 54
-            d.rectangle(
-                [W // 2 - bar_w // 2, y_bar, W // 2 + bar_w // 2, y_bar + 3],
-                fill=lerp_color(BLACK, RED, sub_alpha),
-            )
+def frame_contract(i, n):
+    """The grid shrinks and thins into the final ring mark."""
+    img = Image.new("RGB", (W, H), BLACK)
+    d = ImageDraw.Draw(img)
 
-    # Bottom footer badge: PROJECT INFINITY-X // ANDROID 17
-    badge_alpha = smoothstep((reveal_t - 0.60) / 0.40)
-    if badge_alpha > 0:
-        y_badge = H - 220
-        col_dim = lerp_color(BLACK, DIM, badge_alpha)
-        col_red = lerp_color(BLACK, RED, badge_alpha)
-        b_parts = [
-            ("PROJECT INFINITY-X  ", col_dim),
-            ("//", col_red),
-            ("  ANDROID 17", col_dim),
-        ]
-        b_widths = [d.textlength(p[0], font=FONT_BADGE) for p in b_parts]
-        bx = (W - sum(b_widths)) / 2
-        for (txt, col), bw in zip(b_parts, b_widths):
-            d.text((bx, y_badge), txt, font=FONT_BADGE, fill=col)
-            bx += bw
+    t = (i + 1) / n
+    cols, rows = 13, 13
+    # Spacing collapses toward the ring's radius.
+    spacing = 74 * (1 - t) + 26 * t
+    cx, cy = W // 2, H // 2
+    maxd = ((cols // 2) ** 2 + (rows // 2) ** 2) ** 0.5
 
-    # Quantize to 64-color palette so store-only PNGs stay compact (~6 KB/frame)
-    return img.quantize(colors=64, method=Image.Quantize.FASTOCTREE)
+    for r in range(rows):
+        for c in range(cols):
+            dx = c - cols // 2
+            dy = r - rows // 2
+            dist = (dx * dx + dy * dy) ** 0.5
+            # Keep an annulus as t grows: cells in the middle drop away.
+            if t > 0.4 and dist / maxd < 0.45 * t:
+                continue
+            x = cx + dx * spacing
+            y = cy + dy * spacing
+            rad = spacing * 0.28
+            d.ellipse([x - rad, y - rad, x + rad, y + rad], fill=WHITE)
+
+    return img
+
+
+def frame_pulse(i, n):
+    """One red pulse on the settled ring."""
+    img = Image.new("RGB", (W, H), BLACK)
+    d = ImageDraw.Draw(img)
+
+    # Ease red IN and STAY there.
+    #
+    # An earlier version eased 0 -> 1 -> 0, which looked nice in isolation but
+    # ended part0 on white while part1 (the looping hold) is red. The result was a
+    # visible white->red flick at the loop point, every single boot. Ending the
+    # pulse at full red makes the two parts join seamlessly.
+    t = (i + 1) / n
+    k = t * t * (3 - 2 * t)             # smoothstep 0 -> 1, no falloff
+    r = int(WHITE[0] * (1 - k) + RED[0] * k)
+    g = int(WHITE[1] * (1 - k) + RED[1] * k)
+    b = int(WHITE[2] * (1 - k) + RED[2] * k)
+    color = (r, g, b)
+
+    cols, rows = 13, 13
+    spacing = 26
+    cx, cy = W // 2, H // 2
+    maxd = ((cols // 2) ** 2 + (rows // 2) ** 2) ** 0.5
+
+    for rr in range(rows):
+        for cc in range(cols):
+            dx = cc - cols // 2
+            dy = rr - rows // 2
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist / maxd < 0.45:
+                continue
+            x = cx + dx * spacing
+            y = cy + dy * spacing
+            rad = spacing * 0.28
+            d.ellipse([x - rad, y - rad, x + rad, y + rad], fill=color)
+
+    return img
+
+
+def frame_hold():
+    img = Image.new("RGB", (W, H), BLACK)
+    d = ImageDraw.Draw(img)
+    cols, rows = 13, 13
+    spacing = 26
+    cx, cy = W // 2, H // 2
+    maxd = ((cols // 2) ** 2 + (rows // 2) ** 2) ** 0.5
+    for rr in range(rows):
+        for cc in range(cols):
+            dx = cc - cols // 2
+            dy = rr - rows // 2
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist / maxd < 0.45:
+                continue
+            x = cx + dx * spacing
+            y = cy + dy * spacing
+            rad = spacing * 0.28
+            d.ellipse([x - rad, y - rad, x + rad, y + rad], fill=RED)
+    return img
 
 
 def main():
@@ -196,29 +188,32 @@ def main():
     (STAGE / "part0").mkdir(parents=True)
     (STAGE / "part1").mkdir(parents=True)
 
-    for i in range(INTRO_FRAMES):
-        reveal_t = (i + 1) / INTRO_FRAMES
-        phase_t = (i / INTRO_FRAMES) % 1.0
-        render_frame(reveal_t, phase_t).save(
-            STAGE / "part0" / f"{i:03d}.png", optimize=True
-        )
+    idx = 0
+    for i in range(GRID_FRAMES):
+        frame_grid(i, GRID_FRAMES).save(STAGE / "part0" / f"{idx:03d}.png", optimize=True)
+        idx += 1
+    for i in range(CONTRACT_FRAMES):
+        frame_contract(i, CONTRACT_FRAMES).save(STAGE / "part0" / f"{idx:03d}.png", optimize=True)
+        idx += 1
+    for i in range(PULSE_FRAMES):
+        frame_pulse(i, PULSE_FRAMES).save(STAGE / "part0" / f"{idx:03d}.png", optimize=True)
+        idx += 1
 
-    for i in range(LOOP_FRAMES):
-        phase_t = (i / LOOP_FRAMES) % 1.0
-        render_frame(1.0, phase_t).save(
-            STAGE / "part1" / f"{i:03d}.png", optimize=True
-        )
+    for i in range(HOLD_FRAMES):
+        frame_hold().save(STAGE / "part1" / f"{i:03d}.png", optimize=True)
 
-    # desc.txt: width height fps / c = play to completion even after boot finishes
+    # desc.txt: width height fps / part dirs, then 'p' = play-and-hold loop.
     desc = f"{W} {H} {FPS}\n"
-    desc += "p 1 0 part0\n"
-    desc += "c 0 0 part1\n"
+    desc += f"p 0 0 part0\n"   # play once, then...
+    desc += f"p 0 3 part1\n"   # ...loop part1 with a 3-frame pause
     (STAGE / "desc.txt").write_text(desc)
 
     out = OUT / "bootanimation.zip"
     if out.exists():
         out.unlink()
 
+    # -0 store-only: bootanimation decodes PNGs itself and a deflated zip only
+    # adds CPU on a weak SoC during the one moment we cannot afford it.
     with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as z:
         z.write(STAGE / "desc.txt", "desc.txt")
         for part in ("part0", "part1"):
@@ -226,9 +221,8 @@ def main():
                 z.write(p, f"{part}/{p.name}")
 
     subprocess.run(["rm", "-rf", str(STAGE)], check=True)
-    sz = out.stat().st_size
-    print(f"wrote {out}  ({sz} bytes, {sz/1024:.1f} KB)")
-    print(f"  part0: {INTRO_FRAMES} frames, part1: {LOOP_FRAMES} frames, {W}x{H} @ {FPS}fps")
+    print(f"wrote {out}  ({out.stat().st_size/1024/1024:.2f} MB)")
+    print(f"  part0: {idx} frames, part1: {HOLD_FRAMES} frames, {W}x{H} @ {FPS}fps")
 
 
 if __name__ == "__main__":

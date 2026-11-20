@@ -1382,14 +1382,14 @@ PY
     ok "verified KernelSU-Next cold-boot namespace race fix + SuSFS v2.4.0 in kernel/samsung/universal9611"
 fi
 
-# Ensure 4GB LZ4 ZRAM + Swap is configured in device/samsung/universal9611-common
+# Ensure 2GB / 4GB / 6GB selectable LZ4 ZRAM + Swap is configured in device/samsung/universal9611-common
 DEV_COMMON="device/samsung/universal9611-common"
 if [[ -d "$DEV_COMMON/rootdir/etc" ]]; then
     if ! grep -q '/dev/block/zram0' "$DEV_COMMON/rootdir/etc/fstab.exynos9611" 2>/dev/null; then
         printf '\n/dev/block/zram0 none swap defaults zramsize=4294967296,max_comp_streams=8\n' >> "$DEV_COMMON/rootdir/etc/fstab.exynos9611"
         ok "added 4GB LZ4 ZRAM swap entry to $DEV_COMMON/rootdir/etc/fstab.exynos9611"
     fi
-    if ! grep -q 'swapon_all /vendor/etc/fstab.exynos9611' "$DEV_COMMON/rootdir/etc/init.exynos9611.rc" 2>/dev/null; then
+    if ! grep -q 'persist.sys.xt.zram_size' "$DEV_COMMON/rootdir/etc/init.exynos9611.rc" 2>/dev/null; then
         cat >> "$DEV_COMMON/rootdir/etc/init.exynos9611.rc" <<'EOF'
 
 on property:sys.boot_completed=1
@@ -1398,8 +1398,29 @@ on property:sys.boot_completed=1
     write /sys/block/zram0/comp_algorithm lz4
     write /sys/block/zram0/max_comp_streams 8
     swapon_all /vendor/etc/fstab.exynos9611
+
+on property:sys.boot_completed=1 && property:persist.sys.xt.zram_size=2147483648
+    exec - root root -- /system/bin/swapoff /dev/block/zram0
+    write /sys/block/zram0/reset 1
+    write /sys/block/zram0/comp_algorithm lz4
+    write /sys/block/zram0/max_comp_streams 8
+    swapon_all /system/etc/fstab.zram.2g
+
+on property:sys.boot_completed=1 && property:persist.sys.xt.zram_size=4294967296
+    exec - root root -- /system/bin/swapoff /dev/block/zram0
+    write /sys/block/zram0/reset 1
+    write /sys/block/zram0/comp_algorithm lz4
+    write /sys/block/zram0/max_comp_streams 8
+    swapon_all /system/etc/fstab.zram.4g
+
+on property:sys.boot_completed=1 && property:persist.sys.xt.zram_size=6442450944
+    exec - root root -- /system/bin/swapoff /dev/block/zram0
+    write /sys/block/zram0/reset 1
+    write /sys/block/zram0/comp_algorithm lz4
+    write /sys/block/zram0/max_comp_streams 8
+    swapon_all /system/etc/fstab.zram.6g
 EOF
-        ok "wired 4GB LZ4 ZRAM + Swap activation in $DEV_COMMON/rootdir/etc/init.exynos9611.rc"
+        ok "wired 2GB/4GB/6GB selectable LZ4 ZRAM + Swap activation in $DEV_COMMON/rootdir/etc/init.exynos9611.rc"
     fi
 fi
 
