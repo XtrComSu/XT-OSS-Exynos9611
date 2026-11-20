@@ -169,7 +169,12 @@ PRODUCT_PACKAGES += \
     XtDebug
 
 PRODUCT_COPY_FILES += \
-    vendor/xt/apps/XtDebug/privapp-permissions-xt-debug.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/permissions/privapp-permissions-xt-debug.xml
+    vendor/xt/apps/XtDebug/privapp-permissions-xt-debug.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/permissions/privapp-permissions-xt-debug.xml \
+    vendor/xt/config/init/xt_zram_swap.rc:$(TARGET_COPY_OUT_SYSTEM)/etc/init/xt_zram_swap.rc \
+    vendor/xt/config/init/fstab.zram:$(TARGET_COPY_OUT_SYSTEM)/etc/fstab.zram \
+    vendor/xt/config/init/fstab.zram.2g:$(TARGET_COPY_OUT_SYSTEM)/etc/fstab.zram.2g \
+    vendor/xt/config/init/fstab.zram.4g:$(TARGET_COPY_OUT_SYSTEM)/etc/fstab.zram.4g \
+    vendor/xt/config/init/fstab.zram.6g:$(TARGET_COPY_OUT_SYSTEM)/etc/fstab.zram.6g
 
 # ---------------------------------------------------------------------------
 # 9. OPTIONAL layers

@@ -1,0 +1,32 @@
+on boot
+    write /proc/sys/vm/page-cluster 0
+    write /proc/sys/vm/swappiness 100
+    write /sys/block/zram0/comp_algorithm lz4
+    write /sys/block/zram0/max_comp_streams 8
+    swapon_all /system/etc/fstab.zram
+
+on property:sys.boot_completed=1
+    write /proc/sys/vm/page-cluster 0
+    write /proc/sys/vm/swappiness 100
+    swapon_all /system/etc/fstab.zram
+
+on property:sys.boot_completed=1 && property:persist.sys.xt.zram_size=2147483648
+    exec - root root -- /system/bin/swapoff /dev/block/zram0
+    write /sys/block/zram0/reset 1
+    write /sys/block/zram0/comp_algorithm lz4
+    write /sys/block/zram0/max_comp_streams 8
+    swapon_all /system/etc/fstab.zram.2g
+
+on property:sys.boot_completed=1 && property:persist.sys.xt.zram_size=4294967296
+    exec - root root -- /system/bin/swapoff /dev/block/zram0
+    write /sys/block/zram0/reset 1
+    write /sys/block/zram0/comp_algorithm lz4
+    write /sys/block/zram0/max_comp_streams 8
+    swapon_all /system/etc/fstab.zram.4g
+
+on property:sys.boot_completed=1 && property:persist.sys.xt.zram_size=6442450944
+    exec - root root -- /system/bin/swapoff /dev/block/zram0
+    write /sys/block/zram0/reset 1
+    write /sys/block/zram0/comp_algorithm lz4
+    write /sys/block/zram0/max_comp_streams 8
+    swapon_all /system/etc/fstab.zram.6g
