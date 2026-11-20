@@ -11,6 +11,8 @@ This repo is an **overlay**, not a ROM fork. It adds a manifest, product makefil
 build scripts, and theme overlays on top of unmodified upstream trees. Every change is applied by
 script and is reversible.
 
+[Quick start](#quick-start) · [Latest M31 Release](https://github.com/XtrComSu/XT-OSS-Exynos9611/releases/latest) · [Verified Build Log](docs/BUILD-LOG.md) · [M31 Sideload Guide](flash/FLASH-M31.md) · [Status](#status)
+
 ---
 
 ## Why this repo exists
@@ -83,7 +85,7 @@ re-run, and fails loudly on residue.
 
 ## Kernel
 
-Uses `XtrComSu/android_kernel_samsung_universal9611` @ `lineage-24.0-KSUN` — Linux 4.14.357 with
+Uses `XtrComSu/android_kernel_samsung_universal9611` @ `ksun-susfs` (`lineage-24.0` baseline) — Linux 4.14.357 with
 **KernelSU-Next + SUSFS built in**. Defconfig `exynos9611-<device>_defconfig` already exists upstream.
 
 Nothing in this repo gates or blocks a foreign kernel. Flashing a different kernel is supported; SUSFS
@@ -103,14 +105,14 @@ Nothing sounds, Nothing wallpapers — are **not** bundled and never will be.
 
 | Layer | State |
 |---|---|
-| manifest pinning | **complete**, 25 projects, XML validated |
-| four deltas | **complete**, fixture-tested |
-| five product makefiles | **complete**, fingerprints from upstream |
+| manifest pinning | **complete**, 25 projects, XML validated (`build/verify-manifest.py`) |
+| tree deltas | **complete**, fixture-tested (`build/patch-trees.sh`, [`docs/BUILD-LOG.md`](docs/BUILD-LOG.md)) |
+| five product makefiles | **complete**, fingerprints from upstream (`xt_m31`, `xt_m31s`, `xt_f41`, `xt_m21`, `xt_a51`) |
 | config layer (memory/ART/integrity) | **complete** |
-| GApps trim | **complete** (list needs one audit pass against `vendor/pixel/gms`) |
-| RRO overlays | **in progress** |
-| apps (widgets/themes/status) | **planned** |
-| first build | **not yet run** — needs the build box from the plan |
+| GApps allowlist & WebView | **complete**, verified against staged packages (`build/verify-gapps.py`) |
+| RRO overlays | **verified** against framework resources (`build/verify-overlays.py`) |
+| apps (`XtThemes`, `XtWidgets`, `XtStatus`) | **staged** in `apps/` and included in product packages |
+| Galaxy M31 (`SM-M315F`) OTA build | **compiled & published** ([`xt-os-m31-20261119-webview`](https://github.com/XtrComSu/XT-OSS-Exynos9611/releases/tag/xt-os-m31-20261119-webview), [`flash/FLASH-M31.md`](flash/FLASH-M31.md)) |
+| hardware boot & `M31s`/`F41`/`M21`/`A51` builds | **pending** on-device boot verification and remaining device builds |
 
-The port is not "finished" until a device boots. Everything above is the scaffolding that makes that
-possible, and it is written to fail loudly rather than silently produce a broken build.
+The port is not "finished" until a device boots and on-device memory/integrity targets are measured on hardware. Everything above is the verified build and release scaffolding, written to fail loudly rather than silently produce a broken image.
