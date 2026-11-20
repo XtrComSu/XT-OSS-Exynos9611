@@ -977,7 +977,8 @@ if p_pim.exists():
         }"""
     new_pim2b = """        final long identity = Binder.clearCallingIdentity();
         try {
-            if (!SubscriptionManager.isUsableSubscriptionId(subId)) {
+            if (!SubscriptionManager.isUsableSubscriptionId(subId)
+                    && Looper.myLooper() != mMainThreadHandler.getLooper()) {
                 int bitmask = getAllowedNetworkTypesBitmask(subId);
                 if (bitmask > 0) {
                     return (long) bitmask;
