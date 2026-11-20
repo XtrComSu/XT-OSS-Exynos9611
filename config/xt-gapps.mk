@@ -111,7 +111,6 @@ XT_GAPPS_ALL := \
     GooglePrintRecommendationService \
     TagGoogle \
     CalculatorGooglePrebuilt_85006267 \
-    Chrome \
     Chrome-Stub \
     ConfigUpdater \
     DevicePolicyPrebuilt-v10572820 \
@@ -142,11 +141,10 @@ XT_GAPPS_ALL := \
     SettingsIntelligenceGooglePrebuilt \
     SetupWizardPrebuilt_versioned \
     SetupWizardPixelPrebuilt_versioned \
-    TrichromeLibrary \
     TrichromeLibrary-Stub \
+    TurboAdapter \
     TurboPrebuilt \
     Velvet \
-    WebViewGoogle \
     WebViewGoogle-Stub \
     WellbeingPrebuilt \
     Flipendo \
