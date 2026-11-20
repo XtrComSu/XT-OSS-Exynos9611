@@ -1432,6 +1432,17 @@ EOF
     fi
 fi
 
+# Ensure AOSP m bacon kernel build uses the KSUN+SuSFS <device>_defconfig
+for dev_pair in "m31:exynos9611-m31nsxx_defconfig" "m31s:exynos9611-m31snsxx_defconfig" "m21:exynos9611-m21nsxx_defconfig" "f41:exynos9611-f41dd_defconfig" "a51:exynos9611-a51nsxx_defconfig"; do
+    d_short="${dev_pair%%:*}"
+    d_long="${dev_pair##*:}"
+    cfg_dir="kernel/samsung/universal9611/arch/arm64/configs"
+    if [[ -f "$cfg_dir/${d_short}_defconfig" && -f "$cfg_dir/$d_long" ]]; then
+        cp -f "$cfg_dir/${d_short}_defconfig" "$cfg_dir/$d_long"
+        ok "synced KSUN+SuSFS ${d_short}_defconfig -> $d_long"
+    fi
+done
+
 # ---------------------------------------------------------------------------
 say "Summary"
 # ---------------------------------------------------------------------------

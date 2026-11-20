@@ -42,7 +42,8 @@ public final class AnrGuardReceiver extends BroadcastReceiver {
             ensureDeviceProvisioned(appCtx);
             AnrGuardEngine.applyAllDefaults(appCtx);
             if (Intent.ACTION_BOOT_COMPLETED.equals(action)
-                    || Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)) {
+                    || Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)
+                    || Intent.ACTION_USER_PRESENT.equals(action)) {
                 maybeShowFirstBootNotification(appCtx);
                 scheduleFirstBootWelcomeLaunch(appCtx);
             }
