@@ -83,7 +83,30 @@ public final class AnrGuardEngine {
         AnrGuardReceiver.ensureDeviceProvisioned(context);
         applyBrowserAnrFix(context, true);
         applySmoothnessFix(context, true);
+        applyZramAndSwapTuning(context, true);
         killRunawayHogs(context);
+    }
+
+    public static boolean applyZramAndSwapTuning(Context context, boolean enable) {
+        try {
+            Settings.Global.putInt(context.getContentResolver(), "xt_zram_swap_enabled", enable ? 1 : 0);
+            setZramDiskSizeProperty(context, enable ? "4294967296" : "0");
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "applyZramAndSwapTuning warning", t);
+            return false;
+        }
+    }
+
+    public static void setZramDiskSizeProperty(Context context, String sizeBytes) {
+        try {
+            Settings.Global.putString(context.getContentResolver(), "xt_zram_size_bytes", sizeBytes);
+            Class<?> sp = Class.forName("android.os.SystemProperties");
+            Method set = sp.getMethod("set", String.class, String.class);
+            set.invoke(null, "persist.sys.xt.zram_size", sizeBytes);
+        } catch (Throwable t) {
+            Log.w(TAG, "setZramDiskSizeProperty failed", t);
+        }
     }
 
     public static boolean applyBrowserAnrFix(Context context, boolean enable) {

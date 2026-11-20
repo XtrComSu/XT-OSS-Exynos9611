@@ -41,6 +41,21 @@ public final class AnrGuardReceiver extends BroadcastReceiver {
         AnrGuardEngine.triggerSimlessVoLteRegistration(context);
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
             maybeShowFirstBootWelcome(context);
+            maybeLaunchFirstBootWizard(context);
+        }
+    }
+
+    private static void maybeLaunchFirstBootWizard(Context context) {
+        try {
+            ContentResolver cr = context.getContentResolver();
+            if (Settings.Global.getInt(cr, XtWelcomeActivity.KEY_FIRST_BOOT_DONE, 0) == 1) {
+                return;
+            }
+            Intent wiz = new Intent(context, XtWelcomeActivity.class);
+            wiz.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            context.startActivity(wiz);
+        } catch (Throwable t) {
+            Log.w(TAG, "Could not auto-launch XtWelcomeActivity", t);
         }
     }
 

@@ -39,6 +39,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".XtWelcomeActivity"
+            android:exported="true"
+            android:label="XT-Series First-Boot Setup"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
         <receiver
             android:name=".AnrGuardReceiver"
             android:exported="true"

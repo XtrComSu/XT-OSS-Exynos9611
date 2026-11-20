@@ -109,10 +109,18 @@ public final class DebugActivity extends Activity {
         heroCard.addView(title);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Exynos 9611 • KernelSU-Next v3.4.2 + SuSFS v2.4.0 • VoLTE & 4G LTE • Vivaldi ANR Guard");
+        subtitle.setText("Exynos 9611 • KernelSU-Next v3.4.2 + SuSFS v2.4.0 • 4GB ZRAM+Swap • VoLTE & LTE");
         subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
         subtitle.setTextColor(Color.parseColor("#CBD5E1"));
         heroCard.addView(subtitle);
+        addSpacer(heroCard, 10);
+
+        Button btnWelcome = makeButton("Launch XT-Series First-Boot Experience →", "#2563EB", "#FFFFFF");
+        btnWelcome.setOnClickListener(v -> {
+            android.content.Intent i = new android.content.Intent(this, XtWelcomeActivity.class);
+            startActivity(i);
+        });
+        heroCard.addView(btnWelcome);
 
         root.addView(heroCard);
         addSpacer(root, 14);
@@ -365,6 +373,36 @@ public final class DebugActivity extends Activity {
     private View buildKernelRamPage() {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout zramCard = makeCard();
+        TextView hdr = new TextView(this);
+        hdr.setText("ZRAM + Swap Memory Booster (LZ4 Compressed RAM)");
+        hdr.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        hdr.setTypeface(Typeface.DEFAULT_BOLD);
+        hdr.setTextColor(Color.WHITE);
+        zramCard.addView(hdr);
+        addSpacer(zramCard, 8);
+
+        LinearLayout zRow = new LinearLayout(this);
+        zRow.setOrientation(LinearLayout.HORIZONTAL);
+        String[] zLabels = { "2 GB ZRAM", "4 GB ZRAM (Default)", "6 GB ZRAM Turbo" };
+        final String[] zBytes = { "2147483648", "4294967296", "6442450944" };
+        for (int i = 0; i < 3; i++) {
+            final int idx = i;
+            Button b = makeButton(zLabels[i], i == 1 ? "#00C853" : "#1E293B", i == 1 ? "#000000" : "#E2E8F0");
+            b.setOnClickListener(v -> {
+                AnrGuardEngine.setZramDiskSizeProperty(this, zBytes[idx]);
+                Toast.makeText(this, "Requested " + zLabels[idx] + " + Swap (vm.swappiness=100)", Toast.LENGTH_SHORT).show();
+                handler.postDelayed(this::refreshAllTabs, 800);
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+            if (i < 2) lp.setMarginEnd(dp(6));
+            zRow.addView(b, lp);
+        }
+        zramCard.addView(zRow);
+        page.addView(zramCard);
+        addSpacer(page, 12);
 
         LinearLayout reportCard = makeCard();
         tvKernelReport = makeMonoTextView();
