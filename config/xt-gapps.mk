@@ -194,9 +194,6 @@ XT_GAPPS_KEEP := \
     com.google.android.gmssystem.prodvic \
     AndroidPlatformServices \
     ModuleMetadataGoogle \
-    SetupWizardPrebuilt_versioned \
-    SetupWizardPixelPrebuilt_versioned \
-    PartnerSetupPrebuilt \
     ConfigUpdater \
     talkback \
     SwitchAccessPrebuilt_1.17.0.877181440 \

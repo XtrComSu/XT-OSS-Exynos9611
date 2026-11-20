@@ -33,8 +33,16 @@
   <remote name="los"       fetch="https://github.com/LineageOS"  revision="lineage-24.0" />
 
   <!-- ==================== shared: Exynos 9611 common fabric ==================== -->
+  <!--
+       Pin universal9611-common to 55e22758a74553c84089ca108fd7533dda890bd1 (2026-10-15,
+       matching the verified LineageOS 24 20261024 build and our ION-based ksun-susfs
+       4.14.357 kernel). Later commits 73e2443..25a32eb removed /dev/ion from ueventd.rc
+       for dma-buf heap kernels and switched gralloc3 -> gralloc4, causing SurfaceFlinger
+       RenderEngine SIGABRT on the ION kernel + proprietary libGLES_mali.so.
+  -->
   <project path="device/samsung/universal9611-common"
-           name="android_device_samsung_universal9611-common" remote="parbindar" />
+           name="android_device_samsung_universal9611-common" remote="parbindar"
+           revision="55e22758a74553c84089ca108fd7533dda890bd1" />
   <project path="vendor/samsung/universal9611-common"
            name="android_vendor_samsung_universal9611-common" remote="parbindar" />
 

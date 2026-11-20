@@ -2,14 +2,12 @@
 <!--
     Default overlay enablement.
 
-    XtThemeNothing is the shipping default. XtThemeStock is present but NOT
-    enabled: the Themes app flips between them at runtime with
-    `cmd overlay enable/disable`, so nothing here is load-bearing for boot.
-    An RRO that fails to apply is a no-op, not a boot failure — that is the
-    whole reason the visual layer is built as overlays rather than forked code.
+    Stock Infinity-X / AOSP design is the shipping default (all custom RRO
+    palettes start disabled). The user can opt into Nothing Dark, Nothing Light,
+    or Monet at runtime via XtThemes.
 -->
 <config>
-    <overlay package="os.theme.nothing" enabled="true" />
+    <overlay package="os.theme.nothing" enabled="false" />
     <overlay package="os.theme.nothinglight" enabled="false" />
     <overlay package="os.theme.monet" enabled="false" />
     <overlay package="os.theme.stock" enabled="false" />

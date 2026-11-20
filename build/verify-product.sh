@@ -83,10 +83,13 @@ else
 fi
 
 printf '\nbuild props:\n'
-bp=$(find "$OUT" -maxdepth 4 -name build.prop 2>/dev/null | head -1)
-if [[ -n "$bp" ]]; then
+prop_files=()
+for cand in "$OUT/product/etc/build.prop" "$OUT/product/build.prop" "$OUT/system/build.prop" "$OUT/vendor/build.prop"; do
+    [[ -f "$cand" ]] && prop_files+=("$cand")
+done
+if (( ${#prop_files[@]} )); then
     for k in ro.xt.version ro.xt.codename ro.build.tags; do
-        v=$(grep -m1 "^$k=" "$bp" 2>/dev/null | cut -d= -f2-)
+        v=$(grep -h -m1 "^$k=" "${prop_files[@]}" 2>/dev/null | head -1 | cut -d= -f2-)
         [[ -n "$v" ]] && ok "$k=$v" || soft "$k not set"
     done
 else

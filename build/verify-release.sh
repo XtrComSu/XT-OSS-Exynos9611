@@ -80,7 +80,7 @@ fi
 printf '\n[signing]\n'
 # build.prop inside the target files is where ro.build.tags actually lands.
 props=""
-for cand in "$OUT/system/build.prop" "$OUT/vendor/build.prop" "$OUT/product/build.prop"; do
+for cand in "$OUT/system/build.prop" "$OUT/vendor/build.prop" "$OUT/product/etc/build.prop" "$OUT/product/build.prop"; do
     [[ -f "$cand" ]] && props="$props $cand"
 done
 

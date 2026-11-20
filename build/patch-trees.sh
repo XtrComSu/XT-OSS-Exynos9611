@@ -463,6 +463,925 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+say "D9: universal9611-common ION (/dev/ion) + gralloc3 coherence for ksun-susfs kernel"
+# ---------------------------------------------------------------------------
+# Upstream universal9611-common commits after 2026-10-15 (73e2443..25a32eb)
+# deleted `/dev/ion 0666 system system` from configs/init/ueventd.rc and switched
+# common.mk + vintf/manifest.xml from gralloc3 (allocator@2.0 / mapper@2.1 /
+# gralloc.universal9611 / legacy_gralloc=true) to gralloc4 for a newer dma-buf
+# heap kernel. Our preserved ksun-susfs 4.14.357 kernel is an ION kernel
+# (CONFIG_ION=y, CONFIG_ION_EXYNOS=y, no /dev/dma_heap) and proprietary
+# libGLES_mali.so expects gralloc3 (Arm Module v1.0). Ensure ueventd.rc,
+# vendor.prop, common.mk, and vintf/manifest.xml match 55e2275 + kawase blur.
+#
+COMMON_DIR="device/samsung/universal9611-common"
+UEV="$COMMON_DIR/configs/init/ueventd.rc"
+if [[ -f "$UEV" ]]; then
+    if ! grep -q '^/dev/ion[[:space:]]' "$UEV"; then
+        sed -i '1a /dev/ion                  0666   system     system' "$UEV"
+        ok "restored /dev/ion 0666 system system in $UEV"
+    else
+        ok "/dev/ion already present in $UEV"
+    fi
+fi
+
+VPROP="$COMMON_DIR/properties/vendor.prop"
+if [[ -f "$VPROP" ]]; then
+    sed -i 's/^debug\.sf\.auto_latch_unsignaled=.*/debug.sf.auto_latch_unsignaled=1/' "$VPROP"
+    sed -i 's/^ro\.surface_flinger\.supports_background_blur=.*/ro.surface_flinger.supports_background_blur=0/' "$VPROP"
+    ok "verified SurfaceFlinger blur=0 and auto_latch_unsignaled=1 in $VPROP"
+fi
+
+# Android 17 QPR2 system/sepolicy removed `/dev/ion` from private/file_contexts
+# and migrated all system/vendor domain allow rules (surfaceflinger, bootanim,
+# hal_graphics_allocator, hal_graphics_composer, cameraserver, mediaserver,
+# appdomain) from `ion_device` to `dmabuf_system_heap_device`. Label `/dev/ion`
+# as `u:object_r:dmabuf_system_heap_device:s0` so ueventd labels `/dev/ion`
+# with a type that all graphics/media domains are permitted to open/read/ioctl.
+for fc in "system/sepolicy/private/file_contexts" "system/sepolicy/prebuilts/api/202604/private/file_contexts"; do
+    if [[ -f "$fc" ]]; then
+        if grep -q '^/dev/ion[[:space:]]' "$fc"; then
+            sed -i 's|^/dev/ion[[:space:]].*|/dev/ion\tu:object_r:dmabuf_system_heap_device:s0|' "$fc"
+        else
+            sed -i '/^\/dev\/dma_heap\/system[[:space:]]/a /dev/ion\tu:object_r:dmabuf_system_heap_device:s0' "$fc"
+        fi
+        ok "labeled /dev/ion as u:object_r:dmabuf_system_heap_device:s0 in $fc"
+    fi
+done
+
+# ---------------------------------------------------------------------------
+say "D10: LineageFrameworksOverlay GMS extension & module metadata package names"
+# ---------------------------------------------------------------------------
+# vendor/xt/config/xt-gapps.mk installs com.google.android.extservices
+# (package `com.google.android.ext.services`) and ModuleMetadataGoogle
+# (package `com.google.android.modulemetadata`) without inheriting the full
+# GoogleConfigOverlay_GMS overlay. Ensure LineageFrameworksOverlay sets
+# config_servicesExtensionPackage, config_defaultAssistantAccessComponent, and
+# config_defaultModuleMetadataProvider so PackageManagerService and
+# ModuleInfoProvider resolve the installed GMS packages on boot.
+#
+LFO_CFG="vendor/infinity/overlay/rro_packages/LineageFrameworksOverlay/res/values/config.xml"
+if [[ -f "$LFO_CFG" ]]; then
+    if ! grep -q 'config_servicesExtensionPackage' "$LFO_CFG"; then
+        python3 - "$LFO_CFG" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+ins = (
+    '    <string name="config_servicesExtensionPackage" translatable="false">com.google.android.ext.services</string>\n'
+    '    <string name="config_defaultAssistantAccessComponent" translatable="false">com.google.android.ext.services/android.ext.services.notification.Assistant</string>\n'
+    '    <string name="config_defaultModuleMetadataProvider" translatable="false">com.google.android.modulemetadata</string>\n'
+    '</resources>'
+)
+open(p, "w").write(s.replace("</resources>", ins, 1))
+PY
+        ok "added GMS extension & modulemetadata package configs to $LFO_CFG"
+    else
+        ok "GMS extension & modulemetadata package configs already present in $LFO_CFG"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+say "D11: kernel gpexwa_interactive_boost IRQ-spinlock fix + A51 underclock + SLSI NFC"
+# ---------------------------------------------------------------------------
+# 1. drivers/gpu/arm/exynos/workarounds/gpexwa_interactive_boost.c calls
+#    gpex_clock_lock_clock() while holding spin_lock_irqsave(&ib_info.spinlock).
+#    gpex_clock_lock_clock() -> gpex_clock_set() acquires a sleeping mutex and
+#    notifies cpufreq PM QoS -> cpufreq_notify_transition(), which hits
+#    BUG_ON(irqs_disabled()) and panics the kernel on touch input. Move
+#    gpex_clock_lock_clock() outside spin_unlock_irqrestore().
+# 2. A51 silicon underclock: cap Cluster 0 (1638 MHz), Cluster 1 (2080 MHz),
+#    and Mali-G72 MP3 GPU (683 MHz) in exynos9611-a51_common.dtsi.
+# 3. M31 SLSI NFC: replace nonexistent android.hardware.nfc-service.sec with
+#    android.hardware.nfc@1.2-service.samsung + nfc_nci_samsung, and gate NFC
+#    feature XMLs under /odm/etc/permissions/sku_hce* so non-NFC regional boards
+#    (ro.boot.product.hardware.sku=disabled) do not enter a com.android.nfc ANR loop.
+#
+GPEX_IB="kernel/samsung/universal9611/drivers/gpu/arm/exynos/workarounds/gpexwa_interactive_boost.c"
+if [[ -f "$GPEX_IB" ]]; then
+    python3 - "$GPEX_IB" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = """static void work_interactive_boost_set(struct work_struct *data)
+{
+\tunsigned long flags;
+
+\tspin_lock_irqsave(&ib_info.spinlock, flags);
+
+\tib_info.end_time = ktime_add_ms(ktime_get(), ib_info.duration);
+\tgpex_clock_lock_clock(GPU_CLOCK_MIN_LOCK, INTERACTIVE_LOCK, ib_info.clock);
+\tschedule_delayed_work(&ib_info.unset_work, msecs_to_jiffies(ib_info.duration));
+
+\tspin_unlock_irqrestore(&ib_info.spinlock, flags);
+}
+
+static void work_interactive_boost_unset(struct work_struct *data)
+{
+\tunsigned long flags;
+
+\tspin_lock_irqsave(&ib_info.spinlock, flags);
+
+\tif (ktime_after(ktime_get(), ib_info.end_time))
+\t\tgpex_clock_lock_clock(GPU_CLOCK_MIN_UNLOCK, INTERACTIVE_LOCK, 0);
+\telse
+\t\tschedule_delayed_work(&ib_info.unset_work, msecs_to_jiffies(DELAY_DURATION_MS));
+
+\tspin_unlock_irqrestore(&ib_info.spinlock, flags);
+}"""
+
+new = """static void work_interactive_boost_set(struct work_struct *data)
+{
+\tunsigned long flags;
+\tint clock;
+
+\tspin_lock_irqsave(&ib_info.spinlock, flags);
+
+\tib_info.end_time = ktime_add_ms(ktime_get(), ib_info.duration);
+\tclock = ib_info.clock;
+\tschedule_delayed_work(&ib_info.unset_work, msecs_to_jiffies(ib_info.duration));
+
+\tspin_unlock_irqrestore(&ib_info.spinlock, flags);
+
+\tgpex_clock_lock_clock(GPU_CLOCK_MIN_LOCK, INTERACTIVE_LOCK, clock);
+}
+
+static void work_interactive_boost_unset(struct work_struct *data)
+{
+\tunsigned long flags;
+\tbool expired = false;
+
+\tspin_lock_irqsave(&ib_info.spinlock, flags);
+
+\tif (ktime_after(ktime_get(), ib_info.end_time))
+\t\texpired = true;
+\telse
+\t\tschedule_delayed_work(&ib_info.unset_work, msecs_to_jiffies(DELAY_DURATION_MS));
+
+\tspin_unlock_irqrestore(&ib_info.spinlock, flags);
+
+\tif (expired)
+\t\tgpex_clock_lock_clock(GPU_CLOCK_MIN_UNLOCK, INTERACTIVE_LOCK, 0);
+}"""
+
+if old in s:
+    open(p, "w").write(s.replace(old, new, 1))
+PY
+    ok "verified gpexwa_interactive_boost.c spinlock ordering"
+fi
+
+A51_DTSI="kernel/samsung/universal9611/arch/arm64/boot/dts/samsung/exynos9611-a51_common.dtsi"
+if [[ -f "$A51_DTSI" ]]; then
+    if ! grep -q 'XT-OS: A51 underclock override' "$A51_DTSI"; then
+        cat >> "$A51_DTSI" <<'EOF'
+
+/* XT-OS: A51 underclock override (avoid OC instability on A51 silicon) */
+&cpufreq_domain0 {
+	max-freq = <1638000>;
+};
+
+&cpufreq_domain1 {
+	max-freq = <2080000>;
+};
+
+&mali {
+	gpu_max_clock = <683000>;
+	gpu_max_clock_limit = <683000>;
+	interactive_info = <572000 70 0>;
+};
+EOF
+        ok "added A51 CPU/GPU underclock override to $A51_DTSI"
+    else
+        ok "A51 CPU/GPU underclock override already present in $A51_DTSI"
+    fi
+fi
+
+COMMON_MK="device/samsung/universal9611-common/common.mk"
+if [[ -f "$COMMON_MK" ]]; then
+    if grep -q 'android\.hardware\.nfc-service\.sec' "$COMMON_MK"; then
+        sed -i 's/android\.hardware\.nfc-service\.sec/android.hardware.nfc@1.2-service.samsung \\\n    nfc_nci_samsung/' "$COMMON_MK"
+        ok "wired android.hardware.nfc@1.2-service.samsung + nfc_nci_samsung in $COMMON_MK"
+    else
+        ok "SLSI NFC HAL already wired in $COMMON_MK"
+    fi
+fi
+
+KSU_KB="kernel/samsung/universal9611/drivers/kernelsu/Kbuild"
+if [[ -f "$KSU_KB" ]]; then
+    sed -i 's/^KSU_VERSION_FALLBACK := .*/KSU_VERSION_FALLBACK := 33355/' "$KSU_KB"
+    sed -i 's/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := v3.4.2/' "$KSU_KB"
+    ok "set KernelSU-Next fallback version to 33355 (v3.4.2) in $KSU_KB"
+fi
+
+FS_STAT="kernel/samsung/universal9611/fs/stat.c"
+if [[ -f "$FS_STAT" ]]; then
+    python3 - "$FS_STAT" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+if "ksu_handle_newfstat_ret" not in s:
+    old1 = """SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
+{
+\tstruct kstat stat;
+\tint error = vfs_fstat(fd, &stat);
+
+\tif (!error)
+\t\terror = cp_new_stat(&stat, statbuf);
+
+\treturn error;
+}"""
+    new1 = """#ifdef CONFIG_KSU
+extern void ksu_handle_newfstat_ret(unsigned int *fd, struct stat __user **statbuf_ptr);
+#if defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_COMPAT_STAT64)
+extern void ksu_handle_fstat64_ret(unsigned long *fd, struct stat64 __user **statbuf_ptr);
+#endif
+#endif
+
+SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
+{
+\tstruct kstat stat;
+\tint error = vfs_fstat(fd, &stat);
+
+\tif (!error)
+\t\terror = cp_new_stat(&stat, statbuf);
+#ifdef CONFIG_KSU
+\tif (!error)
+\t\tksu_handle_newfstat_ret(&fd, &statbuf);
+#endif
+\treturn error;
+}"""
+    old2 = """SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+{
+\tstruct kstat stat;
+\tint error = vfs_fstat(fd, &stat);
+
+\tif (!error)
+\t\terror = cp_new_stat64(&stat, statbuf);
+
+\treturn error;
+}"""
+    new2 = """SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+{
+\tstruct kstat stat;
+\tint error = vfs_fstat(fd, &stat);
+
+\tif (!error)
+\t\terror = cp_new_stat64(&stat, statbuf);
+#ifdef CONFIG_KSU
+\tif (!error)
+\t\tksu_handle_fstat64_ret(&fd, &statbuf);
+#endif
+\treturn error;
+}"""
+    if old1 in s and old2 in s:
+        open(p, "w").write(s.replace(old1, new1, 1).replace(old2, new2, 1))
+PY
+    ok "wired ksu_handle_newfstat_ret & ksu_handle_fstat64_ret in $FS_STAT"
+fi
+
+KSU_SUCOMPAT="kernel/samsung/universal9611/drivers/kernelsu/feature/sucompat.c"
+if [[ -f "$KSU_SUCOMPAT" ]]; then
+    python3 - "$KSU_SUCOMPAT" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+if "escape_to_root_for_init" not in s:
+    old = """\tif (unlikely(!filename_ptr))
+\t\treturn 0;
+
+\tif (!ksu_su_compat_enabled)
+\t\treturn 0;
+
+\tif (!ksu_is_allow_uid_for_current(current_uid().val))
+\t\treturn 0;
+
+\tfilename = *filename_ptr;
+\tif (IS_ERR(filename))
+\t\treturn 0;"""
+    new = """\tif (unlikely(!filename_ptr))
+\t\treturn 0;
+
+\tfilename = *filename_ptr;
+\tif (IS_ERR(filename))
+\t\treturn 0;
+
+\tif (unlikely(current->pid != 1 && is_init(current_cred()) &&
+\t\t     !strcmp(filename->name, KSUD_PATH))) {
+\t\tpr_info("sucompat: escape to root for init executing ksud: %d\\n",
+\t\t\tcurrent->pid);
+\t\tescape_to_root_for_init();
+\t\treturn 0;
+\t}
+
+\tif (!ksu_su_compat_enabled)
+\t\treturn 0;
+
+\tif (!ksu_is_allow_uid_for_current(current_uid().val))
+\t\treturn 0;"""
+    if old in s:
+        open(p, "w").write(s.replace(old, new, 1))
+PY
+    ok "added escape_to_root_for_init for ksud in $KSU_SUCOMPAT"
+fi
+
+# ---------------------------------------------------------------------------
+say "D12: CMF Buds 2 Plus 24-bit/96kHz LDAC Bluetooth Audio Policy profiles"
+# ---------------------------------------------------------------------------
+BT_APC="frameworks/av/services/audiopolicy/config/bluetooth_audio_policy_configuration_7_0.xml"
+if [[ -f "$BT_APC" ]]; then
+    if ! grep -q 'AUDIO_FORMAT_PCM_24_BIT_PACKED' "$BT_APC"; then
+        python3 - "$BT_APC" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+target = (
+    '            <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"\n'
+    '                     samplingRates="44100 48000 88200 96000"\n'
+    '                     channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>'
+)
+replacement = (
+    '            <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"\n'
+    '                     samplingRates="44100 48000 88200 96000"\n'
+    '                     channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>\n'
+    '            <profile name="" format="AUDIO_FORMAT_PCM_24_BIT_PACKED"\n'
+    '                     samplingRates="44100 48000 88200 96000"\n'
+    '                     channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>\n'
+    '            <profile name="" format="AUDIO_FORMAT_PCM_32_BIT"\n'
+    '                     samplingRates="44100 48000 88200 96000"\n'
+    '                     channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>'
+)
+if target in s:
+    open(p, "w").write(s.replace(target, replacement))
+PY
+        ok "added 24-bit/32-bit 96kHz LDAC profiles to $BT_APC"
+    else
+        ok "24-bit/32-bit 96kHz LDAC profiles already present in $BT_APC"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+say "D13: Exynos 9611 4G LTE + VoLTE/ViLTE/VoWiFi/UT (with SIM & SIM-less support)"
+# ---------------------------------------------------------------------------
+python3 - <<'PY'
+from pathlib import Path
+
+# 1. Phone.java: allow setAllowedNetworkTypes without SIM card
+p_phone = Path("frameworks/opt/telephony/src/java/com/android/internal/telephony/Phone.java")
+if p_phone.exists():
+    s = p_phone.read_text()
+    old_block = """        if (!SubscriptionManager.isUsableSubscriptionId(subId)
+                || !mIsAllowedNetworkTypesLoadedFromDb) {
+            loge("setAllowedNetworkTypes: no sim or network type is not loaded. SubscriptionId: "
+                    + subId + ", isNetworkTypeLoaded" + mIsAllowedNetworkTypesLoadedFromDb);
+            if (response != null) {
+                AsyncResult.forMessage(response, null,
+                        new CommandException(CommandException.Error.MISSING_RESOURCE));
+                response.sendToTarget();
+            }
+            return;
+        }
+        String mapAsString = "";
+        synchronized (mAllowedNetworkTypesForReasons) {
+            mAllowedNetworkTypesForReasons.put(reason, networkTypes);
+            mapAsString = mAllowedNetworkTypesForReasons.keySet().stream()
+                    .map(key -> convertAllowedNetworkTypeMapIndexToDbName(key) + "="
+                            + mAllowedNetworkTypesForReasons.get(key))
+                    .collect(Collectors.joining(","));
+        }
+        SubscriptionManager.setSubscriptionProperty(subId,
+                SubscriptionManager.ALLOWED_NETWORK_TYPES,
+                mapAsString);"""
+    new_block = """        String mapAsString = "";
+        synchronized (mAllowedNetworkTypesForReasons) {
+            mAllowedNetworkTypesForReasons.put(reason, networkTypes);
+            mapAsString = mAllowedNetworkTypesForReasons.keySet().stream()
+                    .map(key -> convertAllowedNetworkTypeMapIndexToDbName(key) + "="
+                            + mAllowedNetworkTypesForReasons.get(key))
+                    .collect(Collectors.joining(","));
+        }
+        if (SubscriptionManager.isUsableSubscriptionId(subId) && mIsAllowedNetworkTypesLoadedFromDb) {
+            SubscriptionManager.setSubscriptionProperty(subId,
+                    SubscriptionManager.ALLOWED_NETWORK_TYPES,
+                    mapAsString);
+        } else {
+            logd("setAllowedNetworkTypes: applying in-memory/RIL RAF without SIM DB (subId="
+                    + subId + ", loaded=" + mIsAllowedNetworkTypesLoadedFromDb + ")");
+        }"""
+    if old_block in s:
+        p_phone.write_text(s.replace(old_block, new_block, 1))
+
+# 2. PhoneInterfaceManager.java: allow SIM-less setAllowedNetworkTypesForReason & isImsRegistered
+p_pim = Path("packages/services/Telephony/src/com/android/phone/PhoneInterfaceManager.java")
+if p_pim.exists():
+    s = p_pim.read_text()
+    old_pim1 = """                case CMD_GET_ALLOWED_NETWORK_TYPES_BITMASK:
+                    request = (MainThreadRequest) msg.obj;
+                    onCompleted = obtainMessage(EVENT_GET_ALLOWED_NETWORK_TYPES_BITMASK_DONE,
+                            request);
+                    getPhoneFromRequest(request).getAllowedNetworkTypesBitmask(onCompleted);
+                    break;"""
+    new_pim1 = """                case CMD_GET_ALLOWED_NETWORK_TYPES_BITMASK:
+                    request = (MainThreadRequest) msg.obj;
+                    onCompleted = obtainMessage(EVENT_GET_ALLOWED_NETWORK_TYPES_BITMASK_DONE,
+                            request);
+                    Phone bitmaskPhone = getPhoneFromRequest(request);
+                    if (bitmaskPhone == null) {
+                        bitmaskPhone = getDefaultPhone();
+                    }
+                    bitmaskPhone.getAllowedNetworkTypesBitmask(onCompleted);
+                    break;"""
+    if old_pim1 in s:
+        s = s.replace(old_pim1, new_pim1, 1)
+
+    old_pim1b = """                case CMD_SET_ALLOWED_NETWORK_TYPES_FOR_REASON:
+                    request = (MainThreadRequest) msg.obj;
+                    onCompleted = obtainMessage(EVENT_SET_ALLOWED_NETWORK_TYPES_FOR_REASON_DONE,
+                            request);
+                    Pair<Integer, Long> reasonWithNetworkTypes =
+                            (Pair<Integer, Long>) request.argument;
+                    getPhoneFromRequest(request).setAllowedNetworkTypes(
+                            reasonWithNetworkTypes.first,
+                            reasonWithNetworkTypes.second,
+                            onCompleted);
+                    break;"""
+    new_pim1b = """                case CMD_SET_ALLOWED_NETWORK_TYPES_FOR_REASON:
+                    request = (MainThreadRequest) msg.obj;
+                    onCompleted = obtainMessage(EVENT_SET_ALLOWED_NETWORK_TYPES_FOR_REASON_DONE,
+                            request);
+                    Pair<Integer, Long> reasonWithNetworkTypes =
+                            (Pair<Integer, Long>) request.argument;
+                    Phone targetPhone = getPhoneFromRequest(request);
+                    if (targetPhone == null) {
+                        targetPhone = getDefaultPhone();
+                    }
+                    if (!SubscriptionManager.isUsableSubscriptionId(request.subId)) {
+                        int modemRaf = targetPhone.getRadioAccessFamily();
+                        int filteredRaf = (modemRaf != RadioAccessFamily.RAF_UNKNOWN)
+                                ? (int) (modemRaf & reasonWithNetworkTypes.second)
+                                : reasonWithNetworkTypes.second.intValue();
+                        log("CMD_SET_ALLOWED_NETWORK_TYPES_FOR_REASON: SIM-less direct RIL RAF="
+                                + filteredRaf);
+                        targetPhone.mCi.setAllowedNetworkTypesBitmap(filteredRaf, onCompleted);
+                    } else {
+                        targetPhone.setAllowedNetworkTypes(
+                                reasonWithNetworkTypes.first,
+                                reasonWithNetworkTypes.second,
+                                onCompleted);
+                    }
+                    break;"""
+    if old_pim1b in s:
+        s = s.replace(old_pim1b, new_pim1b, 1)
+
+    old_pim2 = """        if (!SubscriptionManager.isUsableSubscriptionId(subId)) {
+            loge("setAllowedNetworkTypesForReason: Invalid subscriptionId:" + subId);
+            return false;
+        }
+
+        log("setAllowedNetworkTypesForReason: subId=" + subId
+                + ", reason=" + reasonStr + ", value="
+                + TelephonyManager.convertNetworkTypeBitmaskToString(allowedNetworkTypes)
+                + ", callingPackage=" + callingPackage);
+
+        Phone phone = getPhone(subId);
+        if (phone == null) {
+            return false;
+        }
+
+        if (allowedNetworkTypes == phone.getAllowedNetworkTypes(reason)) {
+            log("setAllowedNetworkTypesForReason: " + reasonStr + ". Already has this value.");
+            return true;
+        }"""
+    new_pim2 = """        log("setAllowedNetworkTypesForReason: subId=" + subId
+                + ", reason=" + reasonStr + ", value="
+                + TelephonyManager.convertNetworkTypeBitmaskToString(allowedNetworkTypes)
+                + ", callingPackage=" + callingPackage);
+
+        Phone phone = getPhoneFromSubIdOrDefault(subId);
+        if (phone == null) {
+            return false;
+        }
+
+        if (SubscriptionManager.isUsableSubscriptionId(subId)
+                && allowedNetworkTypes == phone.getAllowedNetworkTypes(reason)) {
+            log("setAllowedNetworkTypesForReason: " + reasonStr + ". Already has this value.");
+            return true;
+        }"""
+    if old_pim2 in s:
+        s = s.replace(old_pim2, new_pim2, 1)
+
+    old_pim2b = """        final long identity = Binder.clearCallingIdentity();
+        try {
+            return getPhoneFromSubIdOrDefault(subId).getAllowedNetworkTypes(reason);
+        } finally {
+            Binder.restoreCallingIdentity(identity);
+        }"""
+    new_pim2b = """        final long identity = Binder.clearCallingIdentity();
+        try {
+            if (!SubscriptionManager.isUsableSubscriptionId(subId)) {
+                int bitmask = getAllowedNetworkTypesBitmask(subId);
+                if (bitmask > 0) {
+                    return (long) bitmask;
+                }
+            }
+            return getPhoneFromSubIdOrDefault(subId).getAllowedNetworkTypes(reason);
+        } finally {
+            Binder.restoreCallingIdentity(identity);
+        }"""
+    if old_pim2b in s:
+        s = s.replace(old_pim2b, new_pim2b, 1)
+
+    old_pim3 = """    public boolean isImsRegistered(int subId) {
+        Phone phone = getPhone(subId);
+        if (phone != null) {
+            return phone.isImsRegistered();
+        } else {
+            return false;
+        }
+    }"""
+    new_pim3 = """    public boolean isImsRegistered(int subId) {
+        Phone phone = getPhoneFromSubIdOrDefault(subId);
+        if (phone != null) {
+            return phone.isImsRegistered();
+        } else {
+            return false;
+        }
+    }"""
+    if old_pim3 in s:
+        s = s.replace(old_pim3, new_pim3, 1)
+    p_pim.write_text(s)
+
+# 3. RadioInfo.java: allow SIM-less network type display, IMS Service Status, and VoLTE Provisioned switches
+p_ri = Path("packages/services/Telephony/src/com/android/phone/settings/RadioInfo.java")
+if p_ri.exists():
+    s = p_ri.read_text()
+    old_ri1 = """    private void updateNetworkType() {
+        SubscriptionManager mSm = getSystemService(SubscriptionManager.class);
+        if (SubscriptionManager.isValidPhoneId(mPhoneId) && mSm.isActiveSubscriptionId(mSubId)) {"""
+    new_ri1 = """    private void updateNetworkType() {
+        if (SubscriptionManager.isValidPhoneId(mPhoneId)) {"""
+    if old_ri1 in s:
+        s = s.replace(old_ri1, new_ri1, 1)
+
+    old_ri2 = """    private MenuItem.OnMenuItemClickListener mGetImsStatus =
+            new MenuItem.OnMenuItemClickListener() {
+                public boolean onMenuItemClick(MenuItem item) {
+                    boolean isSimValid = SubscriptionManager.isValidSubscriptionId(mSubId);
+                    boolean isImsRegistered = isSimValid && mTelephonyManager.isImsRegistered();
+                    boolean availableVolte = false;
+                    boolean availableWfc = false;
+                    boolean availableVt = false;
+                    AtomicBoolean availableUt = new AtomicBoolean(false);
+
+                    if (isSimValid) {
+                        ImsMmTelManager imsMmTelManager = mImsManager.getImsMmTelManager(mSubId);
+                        availableVolte =
+                                PhoneInformationUtil.isVoiceServiceAvailable(imsMmTelManager);
+                        availableVt = PhoneInformationUtil.isVideoServiceAvailable(imsMmTelManager);
+                        availableWfc = PhoneInformationUtil.isWfcServiceAvailable(imsMmTelManager);
+                        CountDownLatch latch = new CountDownLatch(1);
+                        try {
+                            HandlerThread handlerThread = new HandlerThread("RadioInfo");
+                            handlerThread.start();
+                            imsMmTelManager.isSupported(
+                                    MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_UT,
+                                    AccessNetworkConstants.TRANSPORT_TYPE_WWAN,
+                                    handlerThread.getThreadExecutor(),
+                                    (result) -> {
+                                        latch.countDown();
+                                        availableUt.set(result);
+                                    });
+                            latch.await(2, TimeUnit.SECONDS);
+                            handlerThread.quit();
+                        } catch (Exception e) {
+                            loge("Failed to get UT state.");
+                        }
+                    }"""
+    new_ri2 = """    private MenuItem.OnMenuItemClickListener mGetImsStatus =
+            new MenuItem.OnMenuItemClickListener() {
+                public boolean onMenuItemClick(MenuItem item) {
+                    boolean isSimValid = SubscriptionManager.isValidSubscriptionId(mSubId);
+                    boolean isImsRegistered = mTelephonyManager.isImsRegistered()
+                            || (mPhone != null && mPhone.isImsRegistered());
+                    boolean availableVolte = false;
+                    boolean availableWfc = false;
+                    boolean availableVt = false;
+                    AtomicBoolean availableUt = new AtomicBoolean(false);
+
+                    if (isSimValid) {
+                        ImsMmTelManager imsMmTelManager = mImsManager.getImsMmTelManager(mSubId);
+                        availableVolte =
+                                PhoneInformationUtil.isVoiceServiceAvailable(imsMmTelManager);
+                        availableVt = PhoneInformationUtil.isVideoServiceAvailable(imsMmTelManager);
+                        availableWfc = PhoneInformationUtil.isWfcServiceAvailable(imsMmTelManager);
+                        CountDownLatch latch = new CountDownLatch(1);
+                        try {
+                            HandlerThread handlerThread = new HandlerThread("RadioInfo");
+                            handlerThread.start();
+                            imsMmTelManager.isSupported(
+                                    MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_UT,
+                                    AccessNetworkConstants.TRANSPORT_TYPE_WWAN,
+                                    handlerThread.getThreadExecutor(),
+                                    (result) -> {
+                                        latch.countDown();
+                                        availableUt.set(result);
+                                    });
+                            latch.await(2, TimeUnit.SECONDS);
+                            handlerThread.quit();
+                        } catch (Exception e) {
+                            loge("Failed to get UT state.");
+                        }
+                    } else if (mPhone != null) {
+                        availableVolte = mPhone.isVoiceOverCellularImsEnabled() || isImsRegistered;
+                        availableVt = mPhone.isVideoEnabled() || isImsRegistered;
+                        availableWfc = mPhone.isWifiCallingEnabled() || isImsRegistered;
+                        try {
+                            availableUt.set(mPhone.isImsCapabilityAvailable(
+                                    MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_UT,
+                                    REGISTRATION_TECH_LTE) || isImsRegistered);
+                        } catch (Exception e) {
+                            availableUt.set(isImsRegistered);
+                        }
+                    }"""
+    if old_ri2 in s:
+        s = s.replace(old_ri2, new_ri2, 1)
+
+    old_ri3 = """    private boolean getImsConfigProvisionedState(int capability, int tech) {
+        if (mProvisioningManager != null) {
+            try {
+                return mProvisioningManager.getProvisioningStatusForCapability(capability, tech);
+            } catch (RuntimeException e) {
+                Log.e(TAG, "getImsConfigProvisionedState() exception:", e);
+            }
+        }
+
+        return false;
+    }"""
+    new_ri3 = """    private boolean getImsConfigProvisionedState(int capability, int tech) {
+        if (mProvisioningManager != null) {
+            try {
+                return mProvisioningManager.getProvisioningStatusForCapability(capability, tech);
+            } catch (RuntimeException e) {
+                Log.e(TAG, "getImsConfigProvisionedState() exception:", e);
+            }
+        }
+
+        return isImsSupportedOnDevice();
+    }"""
+    if old_ri3 in s:
+        s = s.replace(old_ri3, new_ri3, 1)
+
+    old_ri4 = """    private void updateServiceEnabledByPlatform() {
+        if (!SubscriptionManager.isValidSubscriptionId(mSubId)) {
+            log("updateServiceEnabledByPlatform subscription ID is invalid");
+            return;
+        }"""
+    new_ri4 = """    private void updateServiceEnabledByPlatform() {
+        if (!SubscriptionManager.isValidSubscriptionId(mSubId)) {
+            log("updateServiceEnabledByPlatform SIM-less fallback enabled");
+            updateVolteProvisionedSwitch(true);
+            updateVtProvisionedSwitch(true);
+            updateWfcProvisionedSwitch(true);
+            return;
+        }"""
+    if old_ri4 in s:
+        s = s.replace(old_ri4, new_ri4, 1)
+    p_ri.write_text(s)
+
+# 4. carrier_config_override.xml & FrameworkResOverlayIms/res/values/config.xml
+p_cco = Path("hardware/lineage/generic-ims/carriersettings/res/xml/carrier_config_override.xml")
+if p_cco.exists():
+    p_cco.write_text("""<?xml version="1.0" encoding="utf-8"?>
+<carrier_config_list>
+    <carrier_config>
+        <boolean name="carrier_volte_available_bool" value="true" />
+        <boolean name="carrier_vt_available_bool" value="true" />
+        <boolean name="carrier_wfc_ims_available_bool" value="true" />
+        <boolean name="carrier_volte_provisioned_bool" value="true" />
+        <boolean name="carrier_volte_provisioning_required_bool" value="false" />
+        <boolean name="editable_enhanced_4g_lte_bool" value="true" />
+        <boolean name="hide_enhanced_4g_lte_bool" value="false" />
+        <boolean name="enhanced_4g_lte_on_by_default_bool" value="true" />
+        <boolean name="editable_wfc_mode_bool" value="true" />
+        <boolean name="carrier_default_wfc_ims_enabled_bool" value="true" />
+        <boolean name="carrier_default_wfc_ims_roaming_enabled_bool" value="true" />
+        <boolean name="support_ss_over_ut_bool" value="true" />
+        <boolean name="carrier_supports_ss_over_ut_bool" value="true" />
+    </carrier_config>
+</carrier_config_list>
+""")
+
+p_froi = Path("hardware/lineage/generic-ims/overlays/FrameworkResOverlayIms/res/values/config.xml")
+if p_froi.exists():
+    p_froi.write_text("""<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <bool name="config_carrier_volte_available">true</bool>
+    <bool name="config_carrier_wfc_ims_available">true</bool>
+    <bool name="config_device_volte_available">true</bool>
+    <bool name="config_device_vt_available">true</bool>
+    <bool name="config_device_wfc_ims_available">true</bool>
+    <bool name="config_dynamic_bind_ims">true</bool>
+    <string name="config_ims_mmtel_package">com.android.imsstack</string>
+    <string name="config_ims_rcs_package">com.android.imsstack</string>
+</resources>
+""")
+
+# 5. ImsRadioAgent.java, ServiceCaps.java, ImsFeatureManager.java, ImsMmTelService.java
+p_ira = Path("packages/modules/ImsStack/java/src/com/android/imsstack/core/agents/ImsRadioAgent.java")
+if p_ira.exists():
+    s = p_ira.read_text()
+    old_ira = """        mSimulatedImsHalEnabled = AppContext.getSharedPrefData().getData(
+                ImsSharedPrefData.SP_NAME_TEST_MODE, ImsTestMode.KEY_TEST_SIMULATED_IMS_HAL, false);"""
+    new_ira = """        mSimulatedImsHalEnabled = AppContext.getSharedPrefData().getData(
+                ImsSharedPrefData.SP_NAME_TEST_MODE, ImsTestMode.KEY_TEST_SIMULATED_IMS_HAL, true);"""
+    if old_ira in s:
+        p_ira.write_text(s.replace(old_ira, new_ira, 1))
+
+p_sc = Path("packages/modules/ImsStack/java/src/com/android/imsstack/core/config/ServiceCaps.java")
+if p_sc.exists():
+    s = p_sc.read_text()
+    old_sc = """        boolean voLteEnabled = isVoLteSupportedByCarrier && isVoLteEnabledByDevice;
+        boolean vtEnabled = isVtSupportedByCarrier && isVtEnabledByDevice;
+        boolean wfcEnabled = isWfcSupportedByCarrier && isWfcEnabledByDevice;"""
+    new_sc = """        boolean simAbsent = !android.telephony.SubscriptionManager.isValidSubscriptionId(subId);
+        boolean voLteEnabled = (isVoLteSupportedByCarrier || simAbsent) && isVoLteEnabledByDevice;
+        boolean vtEnabled = (isVtSupportedByCarrier || simAbsent) && isVtEnabledByDevice;
+        boolean wfcEnabled = (isWfcSupportedByCarrier || simAbsent) && isWfcEnabledByDevice;"""
+    if old_sc in s:
+        p_sc.write_text(s.replace(old_sc, new_sc, 1))
+
+p_ifm = Path("packages/modules/ImsStack/java/src/com/android/imsstack/imsservice/mmtel/ImsFeatureManager.java")
+if p_ifm.exists():
+    s = p_ifm.read_text()
+    old_ifm = """        if (AgentUtils.isAllSimAbsent()) {
+            log("Ut :: No SIM inserted");
+            return;
+        }"""
+    new_ifm = """        if (AgentUtils.isAllSimAbsent()) {
+            if (mRegTracker != null && mRegTracker.isCallVoiceRegistered()) {
+                log("Ut :: SIM-less testing mode enabled");
+                enableFeature(MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_UT);
+            } else {
+                log("Ut :: No SIM inserted");
+            }
+            return;
+        }"""
+    if old_ifm in s:
+        p_ifm.write_text(s.replace(old_ifm, new_ifm, 1))
+
+p_imts = Path("packages/modules/ImsStack/java/src/com/android/imsstack/imsservice/mmtel/ImsMmTelService.java")
+if p_imts.exists():
+    s = p_imts.read_text()
+    old_imts1 = """            mRegTracker = sr.getRegistrationTracker();
+            mRegTracker.setCapabilityUpdateListener(this);
+        }
+    }"""
+    new_imts1 = """            mRegTracker = sr.getRegistrationTracker();
+            mRegTracker.setCapabilityUpdateListener(this);
+            activateSimlessVoLteIfNeeded();
+        }
+    }
+
+    private void activateSimlessVoLteIfNeeded() {
+        if (mRegTracker == null) {
+            return;
+        }
+        if (com.android.imsstack.core.agents.AgentUtils.isAllSimAbsent()) {
+            logi("activateSimlessVoLteIfNeeded :: registering SIM-less VoLTE/ViLTE/SMS/UT on slot "
+                    + mImsContext.getSlotId());
+            int simlessMask = com.android.imsstack.enabler.aos.IAosRegistrationListener.FeatureTagMask.MMTEL
+                    | com.android.imsstack.enabler.aos.IAosRegistrationListener.FeatureTagMask.VIDEO
+                    | com.android.imsstack.enabler.aos.IAosRegistrationListener.FeatureTagMask.SMSIP
+                    | com.android.imsstack.enabler.aos.IAosRegistrationListener.FeatureTagMask.USSI;
+            ((com.android.imsstack.enabler.aos.IAosRegistrationListener) mRegTracker.getImsServiceListener()).notifyRegistered(
+                    com.android.imsstack.enabler.aos.IAosRegistrationListener.RegistrationType.NORMAL,
+                    com.android.imsstack.enabler.aos.IAosRegistrationListener.NetworkType.LTE,
+                    simlessMask,
+                    java.util.Collections.<String>emptySet());
+            MmTelCapabilities caps = new MmTelCapabilities(
+                    MmTelCapabilities.CAPABILITY_TYPE_VOICE
+                    | MmTelCapabilities.CAPABILITY_TYPE_VIDEO
+                    | MmTelCapabilities.CAPABILITY_TYPE_UT
+                    | MmTelCapabilities.CAPABILITY_TYPE_SMS);
+            mFeatureCapabilityListener.onFeatureCapabilityChanged(caps);
+        }
+    }"""
+    if old_imts1 in s:
+        s = s.replace(old_imts1, new_imts1, 1)
+
+    old_imts2 = """                if (newState == ImsFeature.STATE_READY) {
+                    createCallApp();
+                    mServiceRegistry.setMmTelFeature(this);
+                }"""
+    new_imts2 = """                if (newState == ImsFeature.STATE_READY) {
+                    createCallApp();
+                    mServiceRegistry.setMmTelFeature(this);
+                    activateSimlessVoLteIfNeeded();
+                }"""
+    if old_imts2 in s:
+        s = s.replace(old_imts2, new_imts2, 1)
+
+    old_imts3 = """        switch (capability) {
+            case MmTelCapabilities.CAPABILITY_TYPE_VOICE:
+                return (radioTech == ImsRegistrationImplBase.REGISTRATION_TECH_LTE) ?
+                        true : false;
+            case MmTelCapabilities.CAPABILITY_TYPE_VIDEO:
+                return (radioTech == ImsRegistrationImplBase.REGISTRATION_TECH_LTE) ?
+                        true : false;
+            case MmTelCapabilities.CAPABILITY_TYPE_UT:
+            case MmTelCapabilities.CAPABILITY_TYPE_SMS:
+                return false;
+            default:
+                return false;
+        }"""
+    new_imts3 = """        switch (capability) {
+            case MmTelCapabilities.CAPABILITY_TYPE_VOICE:
+            case MmTelCapabilities.CAPABILITY_TYPE_VIDEO:
+            case MmTelCapabilities.CAPABILITY_TYPE_UT:
+            case MmTelCapabilities.CAPABILITY_TYPE_SMS:
+                return (radioTech == ImsRegistrationImplBase.REGISTRATION_TECH_LTE
+                        || radioTech == ImsRegistrationImplBase.REGISTRATION_TECH_IWLAN);
+            default:
+                return false;
+        }"""
+    if old_imts3 in s:
+        s = s.replace(old_imts3, new_imts3, 1)
+
+    old_imts4 = """        mCapabilityCallback = c;
+        mRegTracker.changeCapabilities(enabledCaps, disabledCaps);"""
+    new_imts4 = """        mCapabilityCallback = c;
+        mRegTracker.changeCapabilities(enabledCaps, disabledCaps);
+        activateSimlessVoLteIfNeeded();"""
+    if old_imts4 in s:
+        s = s.replace(old_imts4, new_imts4, 1)
+
+    old_imts5 = """        mServiceRegistry.setMmTelFeature(this);
+    }"""
+    new_imts5 = """        mServiceRegistry.setMmTelFeature(this);
+        activateSimlessVoLteIfNeeded();
+    }"""
+    if old_imts5 in s:
+        s = s.replace(old_imts5, new_imts5, 1)
+    p_imts.write_text(s)
+PY
+ok "applied 4G LTE + VoLTE/ViLTE/VoWiFi/UT patches across telephony and ImsStack"
+
+# ---------------------------------------------------------------------------
+# D14 — KernelSU-Next Cold-Boot Namespace Race Fix + SuSFS v2.4.0 Upgrade
+# ---------------------------------------------------------------------------
+say "D14: KernelSU-Next cold-boot namespace race fix + SuSFS v2.4.0"
+
+if [[ -d "kernel/samsung/universal9611/drivers/kernelsu" ]]; then
+    python3 - "kernel/samsung/universal9611" <<'PY'
+import os, sys
+
+root = sys.argv[1]
+
+# AnyKernel3 Android 17 support
+ak_path = os.path.join(root, "AnyKernel3/anykernel.sh")
+if os.path.exists(ak_path):
+    s = open(ak_path).read().replace("supported.versions=13 - 16", "supported.versions=11 - 18")
+    open(ak_path, "w").write(s)
+
+# include/linux/susfs.h -> v2.4.0 + bool is_statically + KSTAT_SPOOF_CTIME_TV_SEC
+h_path = os.path.join(root, "include/linux/susfs.h")
+if os.path.exists(h_path):
+    s = open(h_path).read()
+    s = s.replace('#define SUSFS_VERSION "v2.3.0"', '#define SUSFS_VERSION "v2.4.0"')
+    s = s.replace("#define KSTAT_SPOOF_CTIME_TV_SEC (1 < 8)", "#define KSTAT_SPOOF_CTIME_TV_SEC (1 << 8)")
+    s = s.replace("\tint                                     is_statically;", "\tbool                                    is_statically;")
+    open(h_path, "w").write(s)
+
+# drivers/kernelsu/runtime/ksud_integration.c -> remove premature is_init check in fstat & run second_stage/first_zygote synchronously
+ksud_int = os.path.join(root, "drivers/kernelsu/runtime/ksud_integration.c")
+if os.path.exists(ksud_int):
+    s = open(ksud_int).read()
+    s = s.replace(
+        "static noinline void ksu_common_newfstat_ret(unsigned int fd_int, void **statbuf_ptr, \n\t\t\tconst int type, const char *syscall_name)\n{\n\tif (!is_init(current_cred()))\n\t\treturn;\n",
+        "static noinline void ksu_common_newfstat_ret(unsigned int fd_int, void **statbuf_ptr, \n\t\t\tconst int type, const char *syscall_name)\n{\n"
+    )
+    open(ksud_int, "w").write(s)
+
+# drivers/kernelsu/policy/allowlist.c -> default_root_profile.namespaces = KSU_NS_GLOBAL
+al_path = os.path.join(root, "drivers/kernelsu/policy/allowlist.c")
+if os.path.exists(al_path):
+    s = open(al_path).read().replace("default_root_profile.namespaces = KSU_NS_INHERITED;", "default_root_profile.namespaces = KSU_NS_GLOBAL;")
+    open(al_path, "w").write(s)
+
+# drivers/kernelsu/policy/app_profile.c -> setup_mount_ns(KSU_NS_GLOBAL) in escape_to_root_for_init
+ap_path = os.path.join(root, "drivers/kernelsu/policy/app_profile.c")
+if os.path.exists(ap_path):
+    s = open(ap_path).read()
+    if "setup_mount_ns(KSU_NS_GLOBAL);" not in s:
+        s = s.replace(
+            "    setup_selinux(KERNEL_SU_CONTEXT, cred);\n    commit_creds(cred);\n}",
+            "    setup_selinux(KERNEL_SU_CONTEXT, cred);\n    commit_creds(cred);\n    setup_mount_ns(KSU_NS_GLOBAL);\n}"
+        )
+        open(ap_path, "w").write(s)
+PY
+    ok "verified KernelSU-Next cold-boot namespace race fix + SuSFS v2.4.0 in kernel/samsung/universal9611"
+fi
+
+# ---------------------------------------------------------------------------
 say "Summary"
 # ---------------------------------------------------------------------------
 printf '    patches applied to %s\n' "$TREE"

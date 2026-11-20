@@ -41,9 +41,7 @@ lines=()
 # generate the asset fragment even if one app is mid-edit.
 # ---------------------------------------------------------------------------
 declare -A APPS=(
-    [XtThemes]="apps/XtThemes"
-    [XtWidgets]="apps/XtWidgets"
-    [XtStatus]="apps/XtStatus"
+    [XtDebug]="apps/XtDebug"
 )
 for mod in "${!APPS[@]}"; do
     d="${APPS[$mod]}"

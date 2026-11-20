@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// XtDebug — ANR elimination, Vivaldi/Chromium freeze guard, and Exynos 9611
+// smoothness tuner for XT-OS (Project Infinity-X 4.2).
+
+android_app {
+    name: "XtDebug",
+    manifest: "AndroidManifest.xml",
+    srcs: ["src/**/*.java"],
+    resource_dirs: ["res"],
+    platform_apis: true,
+    certificate: "platform",
+    privileged: true,
+    product_specific: true,
+    aaptflags: ["--no-version-vectors"],
+}

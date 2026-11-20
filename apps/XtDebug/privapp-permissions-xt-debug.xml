@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Privileged permissions for os.xt.debug (XtDebug unified system control suite):
+    - WRITE_SECURE_SETTINGS / WRITE_SETTINGS: ANR Guard, cached_apps_freezer,
+      activity_manager_constants, animation scales, first-boot provisioning
+    - MODIFY_PHONE_STATE / READ_PRIVILEGED_PHONE_STATE: 4G LTE RAF switching &
+      VoLTE/IMS status telemetry
+    - CHANGE_OVERLAY_PACKAGES: RRO theme switching
+    - READ_LOGS / DUMP / PACKAGE_USAGE_STATS: DropBox ANR & system diagnostics
+-->
+<permissions>
+    <privapp-permissions package="os.xt.debug">
+        <permission name="android.permission.WRITE_SECURE_SETTINGS" />
+        <permission name="android.permission.WRITE_SETTINGS" />
+        <permission name="android.permission.READ_LOGS" />
+        <permission name="android.permission.DUMP" />
+        <permission name="android.permission.PACKAGE_USAGE_STATS" />
+        <permission name="android.permission.MODIFY_PHONE_STATE" />
+        <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE" />
+        <permission name="android.permission.CHANGE_OVERLAY_PACKAGES" />
+    </privapp-permissions>
+</permissions>

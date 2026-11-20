@@ -62,16 +62,24 @@ Vol-Down + Power (with USB connected)** until the recovery splash.
 Confirm you are in TWRP, not stock recovery: the UI will be touch-capable and say
 *TWRP*.
 
-## 4. Wipe (required when coming from stock or another ROM)
+## 4. Wipe and prepare `/data` for FBE + metadata encryption (CRITICAL)
 
 ```
 TWRP → Wipe → Format Data → type "yes"
 TWRP → Wipe → Advanced Wipe → select: Dalvik, Cache, System, Vendor, Data, Product → Swipe
 ```
 
-**Format Data (not just Advanced Wipe/Data) is mandatory** when coming from One UI:
-it is the only thing that clears the hardware-backed encryption, and skipping it
-usually ends in a boot loop or a `/data` that cannot be mounted.
+**Important TWRP caveat (verified from device `last_kmsg` + `fs_mgr`):**
+Many M31 TWRP builds (including `4.14.113-Grass`) run `make_f2fs` without `-O encrypt`, leaving `/dev/block/by-name/userdata` with `superblock features = 0`. On boot, Android's `fs_mgr` (`system/fs/fs_mgr/fs_mgr.cpp`) mounts that unencrypted F2FS filesystem, skips formatting, and runs `vdc cryptfs encryptFstab ... shouldFormat=false` (`encrypt_inplace`), preserving `features = 0`. `vold` then fails `FS_IOC_ADD_ENCRYPTION_KEY` with `-EOPNOTSUPP`, and `init` reboots to recovery with `enablefilecrypto_failed`.
+
+To make sure Android formats `/data` cleanly inside `dm-default-key` with `make_f2fs -g android` (`encrypt,extra_attr,project_quota,quota_ino,verity,compression,casefold`), do **one** of the following after TWRP Format Data (still in TWRP, before rebooting to System):
+
+- **Option A (Recommended in TWRP — matches LineageOS Recovery's `roots.cpp:320`):** wipe the first 16 MB of `userdata` so `fs_mgr`'s `partition_wiped()` triggers native formatting on first boot:
+  ```bash
+  adb shell dd if=/dev/zero of=/dev/block/by-name/userdata bs=1M count=16
+  adb shell sync
+  ```
+- **Option B:** Format `/data` using LineageOS / XT-OS recovery (`recovery.img`), which automatically wipes `userdata` when `metadata_encryption` is configured in `recovery.fstab`.
 
 Do **not** wipe `EFS`, `PERSIST`, `Super`, `Boot`, `DTBO`, or `Recovery`.
 

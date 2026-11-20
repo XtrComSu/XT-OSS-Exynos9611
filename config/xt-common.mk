@@ -33,7 +33,7 @@
 XT_VERSION := 1.0
 XT_CODENAME := Nothing-styled
 
-PRODUCT_PROPERTY_OVERRIDES += \
+PRODUCT_PRODUCT_PROPERTIES += \
     ro.xt.version=$(XT_VERSION) \
     ro.xt.codename=$(XT_CODENAME) \
     ro.xt.base=InfinityX-4.2 \
@@ -54,7 +54,22 @@ PRODUCT_PROPERTY_OVERRIDES += \
 #    truth and the efficiency intent below is preserved rather than dropped.
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.surface_flinger.max_frame_buffer_acquired_buffers=3 \
-    debug.sf.enable_gl_backpressure=1
+    debug.sf.enable_gl_backpressure=1 \
+    debug.sf.latch_unsignaled=1 \
+    debug.hwui.renderer=skiagl \
+    ro.sys.fw.bg_apps_limit=24 \
+    ro.hw_timeout_multiplier=2 \
+    persist.sys.disable_rescue=true \
+    persist.bluetooth.a2dp_offload.disabled=true \
+    persist.sys.bt.ldac.abr=true \
+    bluetooth.profile.a2dp.source.enabled=true \
+    bluetooth.profile.avrcp.target.enabled=true \
+    bluetooth.profile.bas.client.enabled=true \
+    bluetooth.profile.gatt.enabled=true \
+    persist.dbg.volte_avail_ovr=1 \
+    persist.dbg.vt_avail_ovr=1 \
+    persist.dbg.wfc_avail_ovr=1 \
+    persist.dbg.ims_volte_enable=1
 
 # ---------------------------------------------------------------------------
 # 3. Efficiency: lmkd (PSI) thresholds
@@ -89,12 +104,12 @@ PRODUCT_PROPERTY_OVERRIDES += \
 
 # ---------------------------------------------------------------------------
 # 5. Integrity: build-surface hygiene
-#    These are the props that make a ROM look like a ROM. ro.build.type and
-#    ro.build.tags come from the build variant; these close the remaining gaps.
+#    ro.adb.secure=1 and ro.secure=1 are already enforced by system/build.prop
+#    and init's SetSafetyNetProps(). Setting them again in vendor/build.prop via
+#    PRODUCT_PROPERTY_OVERRIDES triggers vendor_init SELinux denials (last_kmsg
+#    verified: tcontext=build_prop / userdebug_or_eng_prop), so do not duplicate
+#    them here.
 # ---------------------------------------------------------------------------
-PRODUCT_PROPERTY_OVERRIDES += \
-    ro.adb.secure=1 \
-    ro.secure=1
 
 # ---------------------------------------------------------------------------
 # 5b. Signing
@@ -146,26 +161,15 @@ include vendor/xt/config/xt-gapps.mk
 # ---------------------------------------------------------------------------
 # 8. First-party apps
 #
-#    These now exist in this repo (apps/*), so they are listed unconditionally.
-#    A PRODUCT_PACKAGES entry for a nonexistent module is a hard build failure,
-#    which is why they were NOT listed here before the sources landed — the
-#    ordering matters: sources first, reference second.
-#
-#    XtThemes   — the theme switcher; needs platform signature to call
-#                 OverlayManager.setEnabledExclusiveInCategory
-#    XtWidgets  — dot-matrix clock + status widgets, pure Canvas
-#    XtStatus   — reads /proc so the memory claims can be checked on-device
+#    All XT-OS system utilities (ANR Guard, VoLTE/LTE Lab, Kernel/RAM/PSI
+#    Status Monitor, RRO Theme Switcher, and First-Boot Provisioner) are merged
+#    into a single unified privileged app: XtDebug (os.xt.debug).
 # ---------------------------------------------------------------------------
 PRODUCT_PACKAGES += \
-    XtThemes \
-    XtWidgets \
-    XtStatus
+    XtDebug
 
-# CHANGE_OVERLAY_PACKAGES is signature|privileged. Granted explicitly rather than
-# relying on the platform certificate alone, so the grant survives a signing
-# change and is documented in-tree.
 PRODUCT_COPY_FILES += \
-    vendor/xt/apps/XtThemes/privapp-permissions-xt-themes.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/permissions/privapp-permissions-xt-themes.xml
+    vendor/xt/apps/XtDebug/privapp-permissions-xt-debug.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/permissions/privapp-permissions-xt-debug.xml
 
 # ---------------------------------------------------------------------------
 # 9. OPTIONAL layers
