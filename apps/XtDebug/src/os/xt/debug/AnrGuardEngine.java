@@ -162,6 +162,9 @@ public final class AnrGuardEngine {
                     ctx.getContentResolver(),
                     XtWelcomeActivity.KEY_FIRST_BOOT_DONE,
                     completed ? 1 : 0);
+            Class<?> sp = Class.forName("android.os.SystemProperties");
+            Method set = sp.getMethod("set", String.class, String.class);
+            set.invoke(null, "persist.sys.xt.first_boot_done", completed ? "1" : "0");
         } catch (Throwable t) {
             Log.w(TAG, "markOnboardingCompleted warning", t);
         }

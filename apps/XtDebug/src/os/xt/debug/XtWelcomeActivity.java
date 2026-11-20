@@ -26,6 +26,7 @@ public final class XtWelcomeActivity extends Activity {
 
     public static final String KEY_FIRST_BOOT_DONE = "xt_first_boot_completed";
     public static final String EXTRA_FROM_SETTINGS = "from_settings";
+    public static volatile boolean sIsVisible = false;
 
     private int selectedZramGb = 4;
     private boolean forceLteOnly = false;
@@ -155,6 +156,18 @@ public final class XtWelcomeActivity extends Activity {
 
         scroll.addView(root);
         setContentView(scroll);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        sIsVisible = true;
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        sIsVisible = false;
     }
 
     private void refreshChoices() {
