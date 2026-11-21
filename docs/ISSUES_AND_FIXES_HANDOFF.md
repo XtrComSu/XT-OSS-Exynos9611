@@ -1,9 +1,10 @@
 # XT-OS (Project Infinity-X 4.2 / Android 17) — Exynos 9611 Handoff & Root-Cause Documentation
 
-**Date:** 2026-11-20  
+**Date:** 2026-11-21  
 **Target Family:** Samsung Exynos 9611 (`universal9611`: `m31`, `m31s`, `m21`, `f41`, `a51`, `gta4xl`, `gta4xlwifi`)  
 **Primary Verification Device:** Samsung Galaxy M31 (`SM-M315F`, ADB serial `RZ8N90CBTZD`)  
-**Kernel Branch:** `XtrComSu/android_kernel_samsung_universal9611` (`ksun-susfs`, Linux `4.14.357-XT-Xenos+`, KernelSU-Next `v3.4.2` / `33355` + SuSFS `v2.3.0`)
+**Kernel Branch:** `XtrComSu/android_kernel_samsung_universal9611` (`ksun-susfs`, Linux `4.14.357-XT-Xenos+`, KernelSU-Next `v3.4.2` / `33355` + SuSFS `v2.4.0`)
+**Current Unified Release:** `v4.2-xt-os-20261121` (All 5 phones released)
 
 ---
 
@@ -105,3 +106,29 @@
 - **Unified `XT-Debug` (`os.xt.debug` v2.0) & Custom XT-Series Bootup Experience:**
   - Merged `XtStatus`, `XtThemes`, VoLTE/LTE Radio Lab, and Vivaldi ANR Eliminator into a single privileged app `XT-Debug` (`os.xt.debug`), removing separate `XtStatus`, `XtThemes`, `XtWidgets`, and all custom CMF Buds 2 Plus classes.
   - Generated custom `1080x2340 @ 30fps` **XT-Series `bootanimation.zip`** (`artwork/bootanimation.zip` -> `/product/media/bootanimation.zip`) and added an automatic **XT-Series First-Boot Provisioner & Welcome Notification** in `AnrGuardReceiver.java`.
+
+---
+
+### 10. Multi-Device Unified Production Release (`v4.2-xt-os-20261121`)
+- **Released on:** 2026-11-21  
+- **Release Tag:** [`v4.2-xt-os-20261121`](https://github.com/XtrComSu/XT-OSS-Exynos9611/releases/tag/v4.2-xt-os-20261121)
+
+#### 10.1 Key Changes & Refinements in this Release:
+1. **Galaxy A51 Underclocking Reversion:**
+   - User directive: *"undo the underclocking thing for A51's right now"*.
+   - Reverted A51 underclock overrides across `arch/arm64/boot/dts/samsung/exynos9611-a51_common.dtsi` (`9f7be539cf63`) and `build/patch-trees.sh` (`99cf742`), restoring full stock frequencies (Cluster 0: 1.74 GHz, Cluster 1: 2.31 GHz, Mali-G72 MP3: 845 MHz).
+2. **Nothing-Style Red-and-Black Boot Animation:**
+   - Replaced all experimental animations with the user-selected **red-and-black Nothing-style dot-matrix** boot animation: `XT-OSS — WELCOME TO THE FUTURE OF FREEDOM` (`artwork/bootanimation.zip`, 265 KB, generated via `python3 build/gen-bootanimation.py`).
+   - Wired in `patch-trees.sh` (`34bfaee`) and verified on live hardware at `/system/media/bootanimation.zip`.
+3. **`os.xt.debug` v3.0 Visual & First-Boot Overhaul:**
+   - Redesigned with `#101010` dark background, `#181818` card surfaces, `#F04444` accent red, `#F2F2F2` primary text, `#A5A5A5` secondary text, and `#2C2C2C` dividers.
+   - Built single-screen first-launch intro (`XtWelcomeActivity`) with direct 2/4/6 GB ZRAM Swap and 4G LTE/VoLTE toggles, plus auto-launch on first boot via `AnrGuardReceiver.java` (`START_ACTIVITIES_FROM_BACKGROUND` + `SYSTEM_ALERT_WINDOW`).
+   - Off-UI-thread 60 Hz diagnostics with zero frame drops.
+4. **All 5 Target Devices Built, Verified, and Uploaded:**
+   - **`m31`** (`SM-M315F`): `XT-OS-4.2-m31-20261121.zip` (1,624 MB) — SHA256: `c2e87bf8964f66cc16063101fdfdaba0778409b27bfa6cb716a8ae0fca8974dd`
+   - **`a51`** (`SM-A515F`): `XT-OS-4.2-a51-20261121.zip` (1,772 MB) — SHA256: `30d9602c5ef7e75a5e54b1dde9dd47cba2537af9af23f619366a3f66b54a6fa8`
+   - **`f41`** (`SM-F415F`): `XT-OS-4.2-f41-20261121.zip` (1,624 MB) — SHA256: `863a31ad26393491933d1a02e3c0ccd948bac5e33698fdfad556daa24cebb503`
+   - **`m31s`** (`SM-M317F`): `XT-OS-4.2-m31s-20261121.zip` (1,624 MB) — SHA256: `68ce31c10ff00b930d386430f92c198ba3265c18e088d08bd33865f38d75feb8`
+   - **`m21`** (`SM-M215F`): `XT-OS-4.2-m21-20261121.zip` (1,625 MB) — SHA256: `c2d00534f4824f101d08ba0d9d071e19f88e6b0184f832201ea9ad903a6a4c82`
+5. **Infrastructure Teardown:**
+   - All cloud compute instances (`xt-build`, `lunaris-gen`, `l4p-uscentral1b`) and persistent disks (900 GB total) were permanently deleted and verified clean (`gcloud compute instances list` -> `Listed 0 items`, `gcloud compute disks list` -> `Listed 0 items`).

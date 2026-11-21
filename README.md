@@ -11,7 +11,7 @@ This repo is an **overlay**, not a ROM fork. It adds a manifest, product makefil
 build scripts, and theme overlays on top of unmodified upstream trees. Every change is applied by
 script and is reversible.
 
-[Quick start](#quick-start) · [Latest M31 Release](https://github.com/XtrComSu/XT-OSS-Exynos9611/releases/latest) · [Verified Build Log](docs/BUILD-LOG.md) · [M31 Sideload Guide](flash/FLASH-M31.md) · [Status](#status)
+[Quick start](#quick-start) · [Latest Unified Release (v4.2-xt-os-20261121)](https://github.com/XtrComSu/XT-OSS-Exynos9611/releases/tag/v4.2-xt-os-20261121) · [Master Handoff Guide](HANDOFF.md) · [Root-Cause Handoff](docs/ISSUES_AND_FIXES_HANDOFF.md) · [M31 Sideload Guide](flash/FLASH-M31.md) · [Status](#status)
 
 ---
 
