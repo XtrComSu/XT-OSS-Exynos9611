@@ -25,8 +25,8 @@ done
 git lfs version >/dev/null 2>&1 || die "git-lfs missing (repo init uses --git-lfs)"
 
 avail_gb=$(df -BG --output=avail "$(dirname "$TREE")" | tail -1 | tr -dc '0-9')
-say "   free space: ${avail_gb} GB (need >= 400 for a shallow sync)"
-[[ "$avail_gb" -ge 400 ]] || die "not enough disk; a shallow A17 sync is ~230 GB"
+say "   free space: ${avail_gb} GB (need >= 350 for a shallow sync)"
+[[ "$avail_gb" -ge 350 ]] || die "not enough disk; a shallow A17 sync is ~230 GB"
 
 mkdir -p "$TREE"
 cd "$TREE"
