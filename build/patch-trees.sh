@@ -1440,6 +1440,109 @@ if [[ -f "vendor/xt/artwork/bootanimation.zip" && -d "vendor/infinity/bootanimat
 fi
 
 # ---------------------------------------------------------------------------
+say "D15: Galaxy A51 & Exynos 9611 Display Power & Idle Lock Decoupling Fix"
+# ---------------------------------------------------------------------------
+# When config_powerDecoupleAutoSuspendModeFromDisplay or config_powerDecoupleInteractiveModeFromDisplay
+# is true, the kernel enables autosuspend before display power-down finishes, and attempts
+# to resume without disabling autosuspend first. On the Galaxy A51's AMOLED and optical
+# FOD panel, this triggers a panel sleep race condition where the screen stays completely black
+# and fails to turn back on after short idle or pocket blanking.
+for cfg in "device/samsung/universal9611-common/overlay/frameworks/base/core/res/res/values/config.xml" \
+           "device/samsung/a51/overlay/frameworks/base/core/res/res/values/config.xml"; do
+    if [[ -f "$cfg" ]]; then
+        python3 - "$cfg" <<'PY'
+import sys, re
+path = sys.argv[1]
+content = open(path).read()
+
+# Disable power decoupling to keep autosuspend locked during display blanking/waking
+content = re.sub(
+    r'<bool name="config_powerDecoupleAutoSuspendModeFromDisplay">\s*true\s*</bool>',
+    '<bool name="config_powerDecoupleAutoSuspendModeFromDisplay">false</bool>',
+    content
+)
+content = re.sub(
+    r'<bool name="config_powerDecoupleInteractiveModeFromDisplay">\s*true\s*</bool>',
+    '<bool name="config_powerDecoupleInteractiveModeFromDisplay">false</bool>',
+    content
+)
+content = re.sub(
+    r'<bool name="config_suspendWhenScreenOffDueToProximity">\s*true\s*</bool>',
+    '<bool name="config_suspendWhenScreenOffDueToProximity">false</bool>',
+    content
+)
+
+# For A51, ensure explicit fallback definitions if absent
+if "a51" in path and "config_powerDecoupleAutoSuspendModeFromDisplay" not in content:
+    idx = content.rfind("</resources>")
+    if idx != -1:
+        snippet = """    <!-- XT-OS: Enforce coupled autosuspend to eliminate A51 idle lock black screen -->
+    <bool name="config_powerDecoupleAutoSuspendModeFromDisplay">false</bool>
+    <bool name="config_powerDecoupleInteractiveModeFromDisplay">false</bool>
+    <bool name="config_suspendWhenScreenOffDueToProximity">false</bool>
+"""
+        content = content[:idx] + snippet + content[idx:]
+
+open(path, "w").write(content)
+PY
+        ok "applied coupled display power / idle wake locks in $cfg"
+    fi
+done
+
+# ---------------------------------------------------------------------------
+say "D16: Purge adbroot & privileged debug contexts from SELinux policy"
+# ---------------------------------------------------------------------------
+# Duck Detector and modern banking/integrity scanners check whether u:r:adbroot:s0
+# is recognized as a valid SELinux context by writing to /proc/self/attr/current or
+# querying /sys/fs/selinux/context. In stock user builds, adbroot does not exist (returning
+# EINVAL 22). In userdebug trees, adbroot.te exists in sepolicy, returning EACCES 13,
+# which leaks the presence of a rooted/debug platform policy.
+# We completely purge adbroot declarations from sepolicy so u:r:adbroot:s0 returns EINVAL.
+mapfile -t adbroot_files < <(find system/sepolicy device/*/sepolicy vendor/*/sepolicy -name "adbroot.te" 2>/dev/null || true)
+for f in "${adbroot_files[@]}"; do
+    if [[ -f "$f" ]]; then
+        echo "# Purged by XT-OS to eliminate adbroot context recognition" > "$f"
+        ok "emptied adbroot sepolicy domain in $f"
+    fi
+done
+
+# Purge adbroot service and file contexts across sepolicy dirs
+mapfile -t sep_dirs < <(find system/sepolicy device/*/sepolicy vendor/*/sepolicy -maxdepth 4 -type d 2>/dev/null || true)
+for d in "${sep_dirs[@]}"; do
+    for target in "service_contexts" "file_contexts" "system_server.te"; do
+        p="$d/$target"
+        if [[ -f "$p" ]] && grep -q "adbroot" "$p"; then
+            python3 - "$p" <<'PY'
+import sys
+path = sys.argv[1]
+lines = open(path).readlines()
+new_lines = [l for l in lines if "adbroot" not in l]
+if len(lines) != len(new_lines):
+    open(path, "w").writelines(new_lines)
+PY
+            ok "purged adbroot references from $p"
+        fi
+    done
+done
+
+# Strip dirty sepolicy rules flagged by Duck Detector (system_server execmem, kernel adb_data_file read)
+mapfile -t te_files < <(find system/sepolicy device/*/sepolicy vendor/*/sepolicy -name "*.te" 2>/dev/null || true)
+for te in "${te_files[@]}"; do
+    if [[ -f "$te" ]] && grep -qE "(system_server.*execmem|kernel.*adb_data_file.*read)" "$te"; then
+        python3 - "$te" <<'PY'
+import sys, re
+path = sys.argv[1]
+content = open(path).read()
+# Comment out any permissive rules granting system_server execmem or kernel adb_data_file read
+content = re.sub(r'(\ballow\s+system_server\s+[^;]*execmem\s*;)', r'# \1 (stripped by XT-OS)', content)
+content = re.sub(r'(\ballow\s+kernel\s+adb_data_file:[^;]*read\s*;)', r'# \1 (stripped by XT-OS)', content)
+open(path, "w").write(content)
+PY
+        ok "stripped dirty sepolicy rule in $te"
+    fi
+done
+
+# ---------------------------------------------------------------------------
 say "Summary"
 # ---------------------------------------------------------------------------
 printf '    patches applied to %s\n' "$TREE"
