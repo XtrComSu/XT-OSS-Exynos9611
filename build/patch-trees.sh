@@ -1443,6 +1443,12 @@ for dev_pair in "m31:exynos9611-m31nsxx_defconfig" "m31s:exynos9611-m31snsxx_def
     fi
 done
 
+# Replace 17MB vendor/infinity/bootanimation/bootanimation.zip with our 1.2MB XT-OSS bootanimation.zip
+if [[ -f "vendor/xt/artwork/bootanimation.zip" && -d "vendor/infinity/bootanimation" ]]; then
+    cp -f "vendor/xt/artwork/bootanimation.zip" "vendor/infinity/bootanimation/bootanimation.zip"
+    ok "replaced vendor/infinity/bootanimation/bootanimation.zip with XT-OSS bootanimation.zip"
+fi
+
 # ---------------------------------------------------------------------------
 say "Summary"
 # ---------------------------------------------------------------------------
