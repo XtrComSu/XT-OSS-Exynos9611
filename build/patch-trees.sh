@@ -1506,23 +1506,13 @@ for f in "${adbroot_files[@]}"; do
     fi
 done
 
-# Purge adbroot service and file contexts across sepolicy dirs
-mapfile -t sep_dirs < <(find system/sepolicy device/*/sepolicy vendor/*/sepolicy -maxdepth 4 -type d 2>/dev/null || true)
-for d in "${sep_dirs[@]}"; do
-    for target in "service_contexts" "file_contexts" "system_server.te"; do
-        p="$d/$target"
-        if [[ -f "$p" ]] && grep -q "adbroot" "$p"; then
-            python3 - "$p" <<'PY'
-import sys
-path = sys.argv[1]
-lines = open(path).readlines()
-new_lines = [l for l in lines if "adbroot" not in l]
-if len(lines) != len(new_lines):
-    open(path, "w").writelines(new_lines)
-PY
-            ok "purged adbroot references from $p"
-        fi
-    done
+# Purge adbroot references across all sepolicy files (adbd.te, file.te, service.te, etc.)
+mapfile -t adbroot_refs < <(grep -rl "adbroot" system/sepolicy device/*/sepolicy vendor/*/sepolicy 2>/dev/null || true)
+for p in "${adbroot_refs[@]}"; do
+    if [[ -f "$p" ]]; then
+        sed -i 's/.*adbroot.*/# &/' "$p"
+        ok "commented out adbroot references in $p"
+    fi
 done
 
 # Strip dirty sepolicy rules flagged by Duck Detector (system_server execmem, kernel adb_data_file read)
