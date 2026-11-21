@@ -640,27 +640,19 @@ fi
 
 A51_DTSI="kernel/samsung/universal9611/arch/arm64/boot/dts/samsung/exynos9611-a51_common.dtsi"
 if [[ -f "$A51_DTSI" ]]; then
-    if ! grep -q 'XT-OS: A51 underclock override' "$A51_DTSI"; then
-        cat >> "$A51_DTSI" <<'EOF'
-
-/* XT-OS: A51 underclock override (avoid OC instability on A51 silicon) */
-&cpufreq_domain0 {
-	max-freq = <1638000>;
-};
-
-&cpufreq_domain1 {
-	max-freq = <2080000>;
-};
-
-&mali {
-	gpu_max_clock = <683000>;
-	gpu_max_clock_limit = <683000>;
-	interactive_info = <572000 70 0>;
-};
-EOF
-        ok "added A51 CPU/GPU underclock override to $A51_DTSI"
+    if grep -q 'XT-OS: A51 underclock override' "$A51_DTSI"; then
+        python3 - "$A51_DTSI" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+marker = "\n/* XT-OS: A51 underclock override"
+if marker in s:
+    s = s[:s.index(marker)].rstrip() + "\n"
+    open(p, "w").write(s)
+PY
+        ok "removed A51 CPU/GPU underclock override from $A51_DTSI"
     else
-        ok "A51 CPU/GPU underclock override already present in $A51_DTSI"
+        ok "verified A51 runs at full clocks in $A51_DTSI"
     fi
 fi
 
